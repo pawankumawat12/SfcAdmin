@@ -1192,20 +1192,6 @@ const OrderDetailsModal = ({
                         {address.pincode}
                       </div>
 
-                      {address.latitude != null &&
-                        address.longitude != null &&
-                        Number(address.latitude) !== 0 &&
-                        Number(address.longitude) !== 0 && (
-                          <div className="text-success fw-bold mt-2 d-flex align-items-center gap-1.5 small">
-                            <MapPin size={13} />
-                            <span>
-                              GPS Pin: {Number(address.latitude).toFixed(4)},{" "}
-                              Location Pin: {Number(address.latitude).toFixed(4)},{" "}
-                              {Number(address.longitude).toFixed(4)}
-                            </span>
-                          </div>
-                        )}
-
                       {/* Direction & Call Buttons */}
                       <div className="d-flex flex-wrap gap-2 mt-3 pt-3 border-top">
                         {getDirectionsUrl() && (
@@ -1215,9 +1201,7 @@ const OrderDetailsModal = ({
                             rel="noopener noreferrer"
                             className="btn btn-sm btn-success d-inline-flex align-items-center gap-1.5 fw-bold shadow-sm"
                           >
-                            <Navigation size={13} />
                             <span>Deliver via Google Maps</span>
-                            <ExternalLink size={11} />
                           </a>
                         )}
 

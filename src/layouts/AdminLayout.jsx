@@ -44,7 +44,6 @@ import {
   useGetAdminUnreadCountQuery,
   useMarkAdminNotificationReadMutation,
   useMarkAllAdminNotificationsReadMutation,
-  useRegisterAdminDeviceTokenMutation,
 } from "../services/notificationApi";
 import {
   storeApi,
@@ -53,7 +52,6 @@ import {
 } from "../services/storeApi";
 import { settingsApi } from "../services/settingsApi";
 import { getAdminSocket, disconnectAdminSocket } from "../services/socket";
-import { requestAdminPushToken, onForegroundFcmMessage } from "../services/fcm";
 import { toAssetUrl } from "../utils/assetUrl";
 import { useShopStatus } from "../utils/useShopStatus";
 import WhatsAppModal from "../modals/WhatsAppModal";
@@ -324,157 +322,9 @@ export default function AdminLayout() {
 
   const [markAsRead] = useMarkAdminNotificationReadMutation();
   const [markAllAsRead, { isLoading: isMarkingAll }] = useMarkAllAdminNotificationsReadMutation();
-  const [registerDeviceToken] = useRegisterAdminDeviceTokenMutation();
 
   const notifications = notifData?.data?.notifications || [];
   const unreadCount = unreadCountData?.data?.unreadCount ?? (notifData?.data?.unreadCount || 0);
-
-  // FCM Push Notification Registration & Foreground Listener
-  useEffect(() => {
-    let unsubscribeFcm = () => {};
-
-    const setupFcm = async () => {
-      try {
-        const token = await requestAdminPushToken();
-        if (token) {
-          await registerDeviceToken({
-            token,
-            deviceType: "web",
-            deviceInfo: navigator.userAgent || null,
-          }).unwrap();
-        }
-      } catch (err) {
-        console.warn("[Admin FCM Registration Notice]:", err?.message || err);
-      }
-    };
-
-    setupFcm();
-
-    // Foreground FCM push listener - trigger native system notification even when tab is active
-    unsubscribeFcm = onForegroundFcmMessage((payload) => {
-      refetchNotifs();
-      refetchUnreadCount();
-
-      const title = payload.notification?.title || payload.data?.title || "SFC Cafe";
-      const body = payload.notification?.body || payload.data?.body || "New order received";
-
-      // 1. Play chime sound
-      try {
-        const AudioCtx = window.AudioContext || window.webkitAudioContext;
-        if (AudioCtx) {
-          const ctx = new AudioCtx();
-          const osc = ctx.createOscillator();
-          const gain = ctx.createGain();
-          osc.connect(gain);
-          gain.connect(ctx.destination);
-          osc.type = "sine";
-          osc.frequency.setValueAtTime(587.33, ctx.currentTime);
-          osc.frequency.setValueAtTime(880, ctx.currentTime + 0.12);
-          gain.gain.setValueAtTime(0.2, ctx.currentTime);
-          gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.4);
-          osc.start(ctx.currentTime);
-          osc.stop(ctx.currentTime + 0.4);
-        }
-      } catch {}
-
-      // 2. Trigger native OS / browser notification even when active
-      if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted") {
-        try {
-          if ("serviceWorker" in navigator && navigator.serviceWorker.controller) {
-            navigator.serviceWorker.ready.then((reg) => {
-              reg.showNotification(title, {
-                body,
-                icon: "/favicon.svg",
-                badge: "/favicon.svg",
-                tag: payload.data?.orderId ? `order-${payload.data.orderId}` : "sfc-order",
-                renotify: false,
-                requireInteraction: true,
-                data: {
-                  url: "/orders",
-                  orderId: payload.data?.orderId,
-                  orderNumber: payload.data?.orderNumber,
-                },
-              });
-            });
-          } else {
-            const notif = new Notification(title, {
-              body,
-              icon: "/favicon.svg",
-              badge: "/favicon.svg",
-              tag: payload.data?.orderId ? `order-${payload.data.orderId}` : `sfc-order-${Date.now()}`,
-            });
-            notif.onclick = () => {
-              window.focus();
-              navigate("/orders");
-            };
-          }
-        } catch (e) {
-          console.warn("[FCM] Native notification trigger error:", e);
-        }
-      }
-
-      // 3. In-app toast banner
-      toast.custom(
-        (t) => (
-          <div
-            style={{
-              background: "#0f172a",
-              color: "#ffffff",
-              padding: "12px 16px",
-              borderRadius: "12px",
-              boxShadow: "0 10px 25px -5px rgba(0,0,0,0.4)",
-              display: "flex",
-              alignItems: "center",
-              gap: "12px",
-              cursor: "pointer",
-              border: "1px solid #334155",
-              maxWidth: "360px",
-            }}
-            onClick={() => {
-              toast.dismiss(t.id);
-              navigate("/orders");
-            }}
-          >
-            <div
-              style={{
-                width: "32px",
-                height: "32px",
-                borderRadius: "8px",
-                background: "#4f7d16",
-                display: "grid",
-                placeItems: "center",
-                flexShrink: 0,
-              }}
-            >
-              <Bell size={16} />
-            </div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontWeight: 700, fontSize: "12px", color: "#f8fafc" }}>{title}</div>
-              <div
-                style={{
-                  fontSize: "11px",
-                  color: "#94a3b8",
-                  marginTop: "2px",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                {body}
-              </div>
-            </div>
-          </div>
-        ),
-        { duration: 5000 }
-      );
-    });
-
-    return () => {
-      if (typeof unsubscribeFcm === "function") {
-        unsubscribeFcm();
-      }
-    };
-  }, [registerDeviceToken, refetchNotifs, refetchUnreadCount, navigate]);
 
   // Real-Time Socket.IO Notification Listener
   useEffect(() => {

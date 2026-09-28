@@ -100,9 +100,12 @@ export default function RefundModal({ isOpen, onClose, order, onRefundSuccess })
       onClose();
     } catch (err) {
       console.error("Refund failed:", err);
-      toast.error(
-        err?.data?.message || err?.message || "Failed to process refund on Razorpay"
-      );
+      const errMsg =
+        err?.data?.message ||
+        err?.data?.error ||
+        err?.message ||
+        (typeof err === "string" ? err : "Failed to process refund on Razorpay");
+      toast.error(errMsg, { duration: 6000 });
     }
   };
 
