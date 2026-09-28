@@ -63,8 +63,6 @@ export default function SupplierModal({
     setErrorMsg("");
   }, [supplier, isOpen]);
 
-  if (!isOpen) return null;
-
   const isEdit = Boolean(supplier?.id);
   const isLoading = isCreating || isUpdating;
 
@@ -114,6 +112,8 @@ export default function SupplierModal({
   };
 
   const throttledSubmit = useThrottledCallback(handleSubmit, 2000);
+
+  if (!isOpen) return null;
 
   return (
     <div

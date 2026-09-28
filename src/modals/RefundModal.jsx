@@ -43,8 +43,6 @@ export default function RefundModal({ isOpen, onClose, order, onRefundSuccess })
     }
   }, [isOpen, remainingBalance]);
 
-  if (!isOpen || !order) return null;
-
   const handleFullSelect = () => {
     setRefundType("full");
     setCustomAmount(String(Math.round(remainingBalance)));
@@ -65,6 +63,8 @@ export default function RefundModal({ isOpen, onClose, order, onRefundSuccess })
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+
+    if (!order) return;
 
     const amt =
       refundType === "full"
@@ -107,6 +107,8 @@ export default function RefundModal({ isOpen, onClose, order, onRefundSuccess })
   };
 
   const throttledSubmit = useThrottledCallback(handleSubmit, 2500);
+
+  if (!isOpen || !order) return null;
 
   const isAlreadyRefunded =
     (order.payment_status || "").toLowerCase() === "refunded" ||

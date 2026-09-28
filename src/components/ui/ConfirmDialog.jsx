@@ -16,11 +16,11 @@ export default function ConfirmDialog({
   isLoading = false,
   error = "",
 }) {
+  const throttledConfirm = useThrottledCallback(onConfirm, 1500);
   if (isOpen === false) return null;
   const handleClose = onClose || onCancel;
   const label = confirmText || confirmLabel;
   const isDanger = confirmVariant ? confirmVariant === "danger" : danger;
-  const throttledConfirm = useThrottledCallback(onConfirm, 1500);
 
   return (
     <div

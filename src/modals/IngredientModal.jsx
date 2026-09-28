@@ -104,8 +104,6 @@ export default function IngredientModal({
     setErrorMsg("");
   }, [ingredient, isOpen]);
 
-  if (!isOpen) return null;
-
   const isEdit = Boolean(ingredient?.id);
   const isLoading = isCreating || isUpdating;
 
@@ -166,6 +164,8 @@ export default function IngredientModal({
   };
 
   const throttledSubmit = useThrottledCallback(handleSubmit, 2000);
+
+  if (!isOpen) return null;
 
   return (
     <>
