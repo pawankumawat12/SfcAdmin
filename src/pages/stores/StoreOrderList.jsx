@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useSelector } from "react-redux";
 import {
@@ -34,6 +34,7 @@ import {
 import { useGetStoreByIdQuery } from "../../services/storeApi";
 import OrderDetailsModal from "../../modals/OrderDetailsModal";
 import AdminOrderChatModal from "../../components/orders/AdminOrderChatModal";
+import { getAdminSocket } from "../../services/socket";
 
 export default function StoreOrderList() {
   const { storeId } = useParams();
@@ -100,7 +101,39 @@ export default function StoreOrderList() {
   const deliveredCount = stats.deliveredOrders ?? 0;
   const pendingCount = stats.pendingOrders ?? 0;
 
+  // Real-time live updates for branch orders
+  useEffect(() => {
+    const socket = getAdminSocket();
+    if (!socket) return;
+
+    const handleOrderEvent = (data) => {
+      refetchOrders();
+      if (data?.orderNumber) {
+        toast(`Order #${data.orderNumber} updated: ${data.status || "Cancelled"}`, {
+          icon: data.status === "Cancelled" ? "❌" : "ℹ️",
+        });
+      }
+    };
+
+    socket.on("admin_order_cancelled", handleOrderEvent);
+    socket.on("admin_order_updated", handleOrderEvent);
+    socket.on("admin_order_status_updated", handleOrderEvent);
+    socket.on("admin_new_order", handleOrderEvent);
+
+    return () => {
+      socket.off("admin_order_cancelled", handleOrderEvent);
+      socket.off("admin_order_updated", handleOrderEvent);
+      socket.off("admin_order_status_updated", handleOrderEvent);
+      socket.off("admin_new_order", handleOrderEvent);
+    };
+  }, [refetchOrders]);
+
   const handleStatusChange = async (orderId, nextStatus) => {
+    const order = orders.find((o) => o.id === orderId);
+    if (order && order.status === "Cancelled") {
+      toast.error("This order has been cancelled and its status cannot be modified.");
+      return;
+    }
     try {
       await updateStatus({ id: orderId, status: nextStatus }).unwrap();
       toast.success(`Order #${orderId} status updated to ${nextStatus}`);

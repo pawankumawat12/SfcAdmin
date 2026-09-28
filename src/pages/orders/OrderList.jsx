@@ -214,23 +214,43 @@ export default function OrderList() {
       }
     };
 
+    const handleOrderCancelled = (data) => {
+      refetch();
+      if (data?.order?.id) {
+        setSelectedOrderDetails((prev) => {
+          if (!prev || Number(prev.id) !== Number(data.order.id)) return prev;
+          return { ...prev, ...data.order, status: "Cancelled" };
+        });
+      }
+      setLiveAlert({
+        type: "warning",
+        title: `Order Cancelled: #${data.orderNumber || data.orderId}`,
+        message: data.cancelReason ? `Reason: ${data.cancelReason}` : "Cancelled by customer before kitchen preparation.",
+        orderId: data.orderId,
+      });
+    };
+
     socket.on("admin_new_order", handleNewOrder);
     socket.on("admin_new_message", handleNewMessage);
     socket.on("admin_order_updated", handleOrderUpdated);
     socket.on("admin_order_status_updated", handleOrderUpdated);
-    socket.on("admin_order_cancelled", handleOrderUpdated);
+    socket.on("admin_order_cancelled", handleOrderCancelled);
 
     return () => {
       socket.off("admin_new_order", handleNewOrder);
       socket.off("admin_new_message", handleNewMessage);
       socket.off("admin_order_updated", handleOrderUpdated);
       socket.off("admin_order_status_updated", handleOrderUpdated);
-      socket.off("admin_order_cancelled", handleOrderUpdated);
+      socket.off("admin_order_cancelled", handleOrderCancelled);
     };
   }, [refetch]);
 
   const handleStatusChange = async (orderId, newStatus) => {
     const order = orders.find((o) => o.id === orderId);
+    if (order && order.status === "Cancelled") {
+      alert("This order was cancelled and its status cannot be modified.");
+      return;
+    }
     if (
       order &&
       order.payment_method === "Online Payment" &&
@@ -1506,7 +1526,7 @@ export default function OrderList() {
                 <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
                   <Select
                     value={value}
-                    disabled={isUpdating || (isUnpaidOnline && value === "Pending Payment")}
+                    disabled={isUpdating || value === "Cancelled" || (isUnpaidOnline && value === "Pending Payment")}
                     onChange={(e) => handleStatusChange(item.id, e.target.value)}
                     style={{
                       fontSize: "12px",

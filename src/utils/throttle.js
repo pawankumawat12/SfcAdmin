@@ -1,4 +1,4 @@
-import { useRef, useCallback } from "react";
+import { useRef, useCallback, useEffect } from "react";
 
 /**
  * Creates a standalone throttled function with leading-edge execution.
@@ -24,7 +24,11 @@ export function throttle(fn, waitMs = 1000) {
 export function useThrottledCallback(callback, waitMs = 1000) {
   const lastCallRef = useRef(0);
   const callbackRef = useRef(callback);
-  callbackRef.current = callback;
+
+  // React 19 safe: update ref in effect rather than render body
+  useEffect(() => {
+    callbackRef.current = callback;
+  }, [callback]);
 
   return useCallback(
     (...args) => {
