@@ -326,7 +326,7 @@ export default function StoreProductList() {
               </div>
             </div>
 
-            <Button onClick={() => navigate("/products/create")}>
+            <Button onClick={() => navigate(`/products/create?storeId=${storeId}`)}>
               <Plus size={18} /> Add product
             </Button>
           </div>

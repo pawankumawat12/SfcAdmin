@@ -37,6 +37,8 @@ export const productSchema = z
       .array(z.instanceof(File))
       .max(5, "You can upload maximum 5 images.")
       .optional(),
+
+    storeId: z.string().optional(),
   })
   .superRefine((data, ctx) => {
     if (data.availability_type === "IN_STOCK") {
