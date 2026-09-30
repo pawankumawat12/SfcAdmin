@@ -37,6 +37,7 @@ import {
   History,
   Store,
   MapPin,
+  Film,
 } from "lucide-react";
 import { baseApi } from "../services/baseApi";
 import {
@@ -167,6 +168,7 @@ const getNavigationItems = (role) => {
         { label: "Hero Sliders", to: "/hero-sliders", icon: SlidersHorizontal },
         { label: "Why Choose Us", to: "/why-choose-us", icon: Sparkles },
         { label: "Customer Love", to: "/testimonials", icon: Heart },
+        { label: "Reels & Videos", to: "/reels", icon: Film },
         { label: "CMS Pages", to: "/cms-pages", icon: FileText },
       ],
     },
@@ -226,6 +228,7 @@ const getPageTitle = (pathname) => {
   if (pathname.startsWith("/hero-sliders")) return "Hero Sliders";
   if (pathname.startsWith("/why-choose-us")) return "Why Choose Us";
   if (pathname.startsWith("/testimonials")) return "Customer Love (Testimonials)";
+  if (pathname.startsWith("/reels")) return "Reels & Video Slider";
   if (pathname.startsWith("/cms-pages/create")) return "Add CMS Page";
   if (pathname.startsWith("/cms-pages") && pathname.includes("/edit")) return "Edit CMS Page";
   if (pathname.startsWith("/cms-pages")) return "CMS Pages";

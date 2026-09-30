@@ -28,6 +28,7 @@ import EmailTemplateView from "../pages/emailTemplates/EmailTemplateView";
 import HeroSliderList from "../pages/heroSliders/HeroSliderList";
 import WhyChooseUsList from "../pages/whyChooseUs/WhyChooseUsList";
 import TestimonialList from "../pages/testimonials/TestimonialList";
+import ReelsList from "../pages/reels/ReelsList";
 import CmsPageList from "../pages/cms/CmsPageList";
 import CmsPageCreate from "../pages/cms/CmsPageCreate";
 import CmsPageEdit from "../pages/cms/CmsPageEdit";
@@ -78,6 +79,7 @@ export default function AppRoutes() {
           <Route path="hero-sliders" element={<HeroSliderList />} />
           <Route path="why-choose-us" element={<WhyChooseUsList />} />
           <Route path="testimonials" element={<TestimonialList />} />
+          <Route path="reels" element={<ReelsList />} />
           <Route path="cms-pages" element={<CmsPageList />} />
           <Route path="cms-pages/create" element={<CmsPageCreate />} />
           <Route path="cms-pages/:id/edit" element={<CmsPageEdit />} />
