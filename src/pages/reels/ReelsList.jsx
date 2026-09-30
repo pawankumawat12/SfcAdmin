@@ -376,19 +376,30 @@ export default function ReelsList() {
         </div>
       </div>
 
-      {/* Data Table */}
+      {/* Data Table with Mobile Responsive Horizontal Scroll */}
       <div className="card table-wrap" style={{ padding: 0, overflow: "hidden" }}>
-        <table className="data-table">
-          <thead>
-            <tr>
-              <th style={{ padding: "12px 16px", width: "80px", textAlign: "center" }}>Order</th>
-              <th style={{ padding: "12px 16px", width: "100px" }}>Cover</th>
-              <th style={{ padding: "12px 16px" }}>Reel Title & Link</th>
-              <th style={{ padding: "12px 16px", width: "140px" }}>Platform</th>
-              <th style={{ padding: "12px 16px", width: "110px", textAlign: "center" }}>Status</th>
-              <th style={{ padding: "12px 16px", width: "120px", textAlign: "right" }}>Actions</th>
-            </tr>
-          </thead>
+        <div
+          className="table-responsive table-container"
+          style={{
+            width: "100%",
+            overflowX: "auto",
+            WebkitOverflowScrolling: "touch",
+          }}
+        >
+          <table
+            className="data-table"
+            style={{ width: "100%", minWidth: "760px", borderCollapse: "collapse" }}
+          >
+            <thead>
+              <tr style={{ background: "#f8fafc" }}>
+                <th style={{ padding: "12px 16px", width: "80px", textAlign: "center", whiteSpace: "nowrap" }}>Order</th>
+                <th style={{ padding: "12px 16px", width: "100px", whiteSpace: "nowrap" }}>Cover</th>
+                <th style={{ padding: "12px 16px", minWidth: "220px" }}>Reel Title & Link</th>
+                <th style={{ padding: "12px 16px", width: "140px", whiteSpace: "nowrap" }}>Platform</th>
+                <th style={{ padding: "12px 16px", width: "110px", textAlign: "center", whiteSpace: "nowrap" }}>Status</th>
+                <th style={{ padding: "12px 16px", width: "120px", textAlign: "right", whiteSpace: "nowrap" }}>Actions</th>
+              </tr>
+            </thead>
           <tbody>
             {isLoading ? (
               <tr>
@@ -632,6 +643,7 @@ export default function ReelsList() {
             )}
           </tbody>
         </table>
+        </div>
       </div>
 
       {/* Form Modal */}
