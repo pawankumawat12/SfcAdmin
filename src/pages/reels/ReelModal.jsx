@@ -1,11 +1,19 @@
 import { useState, useEffect } from "react";
-import { X, Video, Play, AlertCircle, Eye } from "lucide-react";
+import { X, Video, Play, AlertCircle, Eye, Film, UploadCloud } from "lucide-react";
 import { FaYoutube, FaInstagram } from "react-icons/fa";
 import Button from "../../components/ui/Button";
 import Input from "../../components/ui/Input";
 import Select from "../../components/ui/Select";
 
 function detectPlatform(url = "") {
+  if (!url) return "youtube";
+  if (
+    /\.(mp4|webm|mov|m4v)(\?.*)?$/i.test(url) ||
+    /cloudinary\.com.*\/video\//i.test(url) ||
+    /uploads\/reels/i.test(url)
+  ) {
+    return "direct";
+  }
   if (/instagram\.com/i.test(url)) return "instagram";
   if (/youtube\.com|youtu\.be/i.test(url)) return "youtube";
   return "youtube";
@@ -28,10 +36,14 @@ export default function ReelModal({
   const [formData, setFormData] = useState({
     title: "",
     video_url: "",
-    platform: "youtube",
+    platform: "direct",
     sort_order: 1,
     is_active: true,
   });
+
+  const [videoSourceMode, setVideoSourceMode] = useState("file"); // "file" | "url"
+  const [videoFile, setVideoFile] = useState(null);
+  const [videoPreviewUrl, setVideoPreviewUrl] = useState("");
 
   const [thumbnailMode, setThumbnailMode] = useState("auto"); // "auto" | "file" | "url"
   const [customThumbnailUrl, setCustomThumbnailUrl] = useState("");
@@ -42,6 +54,11 @@ export default function ReelModal({
   useEffect(() => {
     if (initialData) {
       const detected = initialData.platform || detectPlatform(initialData.video_url || "");
+      const isDirectFile =
+        detected === "direct" ||
+        /\.(mp4|webm|mov)(\?.*)?$/i.test(initialData.video_url || "") ||
+        (initialData.video_url || "").includes("/uploads/");
+
       setFormData({
         title: initialData.title || "",
         video_url: initialData.video_url || "",
@@ -49,6 +66,16 @@ export default function ReelModal({
         sort_order: initialData.sort_order ?? 1,
         is_active: initialData.is_active ?? true,
       });
+
+      if (isDirectFile) {
+        setVideoSourceMode("file");
+        setVideoPreviewUrl(initialData.video_url || "");
+      } else {
+        setVideoSourceMode("url");
+        setVideoPreviewUrl("");
+      }
+
+      setVideoFile(null);
 
       const initialThumb = initialData.thumbnail_url || "";
       if (initialThumb) {
@@ -76,10 +103,13 @@ export default function ReelModal({
       setFormData({
         title: "",
         video_url: "",
-        platform: "youtube",
+        platform: "direct",
         sort_order: 1,
         is_active: true,
       });
+      setVideoSourceMode("file");
+      setVideoFile(null);
+      setVideoPreviewUrl("");
       setThumbnailMode("auto");
       setCustomThumbnailUrl("");
       setThumbnailFile(null);
@@ -101,6 +131,25 @@ export default function ReelModal({
       }
       return next;
     });
+    setValidationError("");
+  };
+
+  const handleVideoFileChange = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 100 * 1024 * 1024) {
+      setValidationError("Video file size must be less than 100MB");
+      return;
+    }
+
+    if (videoPreviewUrl && videoPreviewUrl.startsWith("blob:")) {
+      URL.revokeObjectURL(videoPreviewUrl);
+    }
+
+    setVideoFile(file);
+    const blobUrl = URL.createObjectURL(file);
+    setVideoPreviewUrl(blobUrl);
     setValidationError("");
   };
 
@@ -132,17 +181,35 @@ export default function ReelModal({
       setValidationError("Please enter a reel title");
       return;
     }
-    if (!formData.video_url.trim()) {
-      setValidationError("Please enter a YouTube Shorts or Instagram Reel URL");
-      return;
+
+    if (videoSourceMode === "file") {
+      if (!videoFile && !formData.video_url) {
+        setValidationError("Please select an MP4 video file to upload");
+        return;
+      }
+    } else {
+      if (!formData.video_url.trim()) {
+        setValidationError("Please enter a valid YouTube Shorts, Instagram Reel, or Video URL");
+        return;
+      }
     }
 
     const data = new FormData();
     data.append("title", formData.title.trim());
-    data.append("video_url", formData.video_url.trim());
-    data.append("platform", formData.platform);
     data.append("sort_order", Number(formData.sort_order) || 1);
     data.append("is_active", formData.is_active);
+
+    if (videoSourceMode === "file") {
+      if (videoFile) {
+        data.append("video", videoFile);
+      } else if (formData.video_url) {
+        data.append("video_url", formData.video_url.trim());
+      }
+      data.append("platform", "direct");
+    } else {
+      data.append("video_url", formData.video_url.trim());
+      data.append("platform", formData.platform);
+    }
 
     if (thumbnailMode === "file" && thumbnailFile) {
       data.append("thumbnail", thumbnailFile);
@@ -255,40 +322,128 @@ export default function ReelModal({
               <small className="muted">Short catchy title shown on the video card</small>
             </label>
 
-            <label className="full">
-              Video / Reel URL *
-              <Input
-                type="url"
-                value={formData.video_url}
-                onChange={(e) => handleChange("video_url", e.target.value)}
-                placeholder="https://www.youtube.com/shorts/... or https://www.instagram.com/reel/..."
-                required
-              />
-              <small className="muted" style={{ display: "flex", alignItems: "center", gap: "6px", marginTop: "4px" }}>
-                Platform auto-detected:
-                {formData.platform === "instagram" ? (
-                  <span style={{ color: "#db2777", fontWeight: 700, display: "inline-flex", alignItems: "center", gap: "4px" }}>
-                    <FaInstagram /> Instagram Reel
+            {/* Video Source Switcher: Upload MP4 vs Paste URL */}
+            <div
+              className="full"
+              style={{
+                border: "1px solid var(--border-color, #e2e8f0)",
+                borderRadius: "12px",
+                padding: "16px",
+                background: "#fafafa",
+                display: "flex",
+                flexDirection: "column",
+                gap: "14px",
+              }}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "8px" }}>
+                <div>
+                  <span style={{ fontSize: "0.88rem", fontWeight: 700, color: "#1e293b", display: "flex", alignItems: "center", gap: "6px" }}>
+                    <Video size={16} color="var(--color-primary, #e11d48)" /> Reel Video Source *
                   </span>
-                ) : (
-                  <span style={{ color: "#dc2626", fontWeight: 700, display: "inline-flex", alignItems: "center", gap: "4px" }}>
-                    <FaYoutube /> YouTube Shorts / Video
-                  </span>
-                )}
-              </small>
-            </label>
+                  <p style={{ margin: "2px 0 0", fontSize: "0.78rem", color: "#64748b" }}>
+                    Upload an MP4 video file to play 100% inside your website with zero redirects!
+                  </p>
+                </div>
 
-            <label>
-              Platform
-              <Select
-                value={formData.platform}
-                onChange={(e) => handleChange("platform", e.target.value)}
-              >
-                <option value="youtube">YouTube (Shorts / Video)</option>
-                <option value="instagram">Instagram Reel</option>
-              </Select>
-              <small className="muted">Video source type</small>
-            </label>
+                <div style={{ display: "flex", gap: "6px" }}>
+                  <Button
+                    type="button"
+                    variant={videoSourceMode === "file" ? "primary" : "outline"}
+                    onClick={() => {
+                      setVideoSourceMode("file");
+                      setFormData((p) => ({ ...p, platform: "direct" }));
+                    }}
+                    style={{ fontSize: "0.78rem", padding: "5px 12px", display: "inline-flex", alignItems: "center", gap: "5px" }}
+                  >
+                    <UploadCloud size={14} /> Upload Video (MP4)
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={videoSourceMode === "url" ? "primary" : "outline"}
+                    onClick={() => setVideoSourceMode("url")}
+                    style={{ fontSize: "0.78rem", padding: "5px 12px" }}
+                  >
+                    Paste URL / Shorts
+                  </Button>
+                </div>
+              </div>
+
+              {videoSourceMode === "file" ? (
+                <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                  <label
+                    htmlFor="admin-reel-video-input"
+                    style={{
+                      border: "2px dashed #cbd5e1",
+                      borderRadius: "10px",
+                      padding: "20px",
+                      textAlign: "center",
+                      background: "#ffffff",
+                      cursor: "pointer",
+                      display: "block",
+                      transition: "border-color 0.2s",
+                    }}
+                  >
+                    <input
+                      id="admin-reel-video-input"
+                      type="file"
+                      accept="video/mp4,video/webm,video/quicktime,video/x-m4v"
+                      onChange={handleVideoFileChange}
+                      style={{ display: "none" }}
+                    />
+                    <UploadCloud size={32} style={{ margin: "0 auto 8px", color: "var(--color-primary, #e11d48)" }} />
+                    <div style={{ fontWeight: 600, fontSize: "0.9rem", color: "#334155" }}>
+                      {videoFile
+                        ? `✓ Selected: ${videoFile.name} (${(videoFile.size / (1024 * 1024)).toFixed(1)} MB)`
+                        : initialData?.video_url && videoSourceMode === "file"
+                        ? "Click to change / replace video file"
+                        : "Click here to choose your Reel Video (MP4 / WebM)"}
+                    </div>
+                    <small style={{ color: "#94a3b8", display: "block", marginTop: "4px" }}>
+                      Max file size: 100MB • Formats: MP4, WebM, MOV
+                    </small>
+                  </label>
+
+                  {videoPreviewUrl && (
+                    <div style={{ marginTop: "4px" }}>
+                      <span style={{ fontSize: "0.78rem", fontWeight: 700, color: "#059669", display: "block", marginBottom: "4px" }}>
+                        ✓ Live Video Preview (Will play directly on website):
+                      </span>
+                      <video
+                        src={videoPreviewUrl}
+                        controls
+                        playsInline
+                        style={{ maxHeight: "170px", maxWidth: "100%", borderRadius: "8px", background: "#000" }}
+                      />
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                  <Input
+                    type="url"
+                    value={formData.video_url}
+                    onChange={(e) => handleChange("video_url", e.target.value)}
+                    placeholder="https://www.youtube.com/shorts/... or https://.../video.mp4"
+                  />
+                  <small className="muted" style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                    Platform detected:
+                    {formData.platform === "direct" ? (
+                      <span style={{ color: "#059669", fontWeight: 700, display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                        <Film size={12} /> Direct Video (Plays inline)
+                      </span>
+                    ) : formData.platform === "instagram" ? (
+                      <span style={{ color: "#db2777", fontWeight: 700, display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                        <FaInstagram /> Instagram Reel
+                      </span>
+                    ) : (
+                      <span style={{ color: "#dc2626", fontWeight: 700, display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                        <FaYoutube /> YouTube Shorts / Video
+                      </span>
+                    )}
+                  </small>
+                </div>
+              )}
+            </div>
 
             <label>
               Display Order
@@ -302,7 +457,7 @@ export default function ReelModal({
               <small className="muted">Lower numbers appear first on slider</small>
             </label>
 
-            <label className="full">
+            <label>
               Status
               <Select
                 value={formData.is_active ? "true" : "false"}
@@ -470,7 +625,23 @@ export default function ReelModal({
 
                 {/* Platform Badge */}
                 <div style={{ position: "absolute", top: "10px", left: "10px" }}>
-                  {formData.platform === "instagram" ? (
+                  {formData.platform === "direct" ? (
+                    <span
+                      style={{
+                        background: "#059669",
+                        color: "#fff",
+                        padding: "3px 8px",
+                        borderRadius: "20px",
+                        fontSize: "0.65rem",
+                        fontWeight: 800,
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "4px",
+                      }}
+                    >
+                      <Film size={10} /> Video
+                    </span>
+                  ) : formData.platform === "instagram" ? (
                     <span
                       style={{
                         background: "linear-gradient(45deg, #f59e0b, #ec4899, #8b5cf6)",

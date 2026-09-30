@@ -12,6 +12,7 @@ import {
   XCircle,
   ExternalLink,
   X,
+  Film,
 } from "lucide-react";
 import { FaYoutube, FaInstagram } from "react-icons/fa";
 import toast from "react-hot-toast";
@@ -358,6 +359,7 @@ export default function ReelsList() {
             style={{ minWidth: "140px" }}
           >
             <option value="all">All Platforms</option>
+            <option value="direct">Direct MP4 Video</option>
             <option value="youtube">YouTube</option>
             <option value="instagram">Instagram</option>
           </Select>
@@ -530,7 +532,23 @@ export default function ReelsList() {
 
                   {/* Platform */}
                   <td style={{ padding: "14px 16px" }}>
-                    {reel.platform === "instagram" ? (
+                    {reel.platform === "direct" ? (
+                      <span
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "5px",
+                          background: "#ecfdf5",
+                          color: "#059669",
+                          padding: "3px 8px",
+                          borderRadius: "14px",
+                          fontSize: "0.75rem",
+                          fontWeight: 700,
+                        }}
+                      >
+                        <Film size={12} /> Direct MP4
+                      </span>
+                    ) : reel.platform === "instagram" ? (
                       <span
                         style={{
                           display: "inline-flex",
@@ -690,13 +708,24 @@ export default function ReelsList() {
             </div>
 
             <div style={{ position: "relative", width: "100%", aspectRatio: "9/16", background: "#000" }}>
-              <iframe
-                src={extractEmbedUrl(previewVideo.video_url, previewVideo.platform)}
-                title={previewVideo.title}
-                style={{ width: "100%", height: "100%", border: 0 }}
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                allowFullScreen
-              />
+              {previewVideo.platform === "direct" || /\.(mp4|webm|mov)(\?.*)?$/i.test(previewVideo.video_url || "") ? (
+                <video
+                  src={previewVideo.video_url}
+                  controls
+                  autoPlay
+                  loop
+                  playsInline
+                  style={{ width: "100%", height: "100%", objectFit: "contain" }}
+                />
+              ) : (
+                <iframe
+                  src={extractEmbedUrl(previewVideo.video_url, previewVideo.platform)}
+                  title={previewVideo.title}
+                  style={{ width: "100%", height: "100%", border: 0 }}
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                  allowFullScreen
+                />
+              )}
             </div>
           </div>
         </div>
