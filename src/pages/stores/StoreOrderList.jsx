@@ -19,6 +19,11 @@ import {
   Calendar,
   Package,
   RefreshCw,
+  Printer,
+  Download,
+  FileSpreadsheet,
+  History,
+  BadgeIndianRupee,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import DataTable from "../../components/common/DataTable";
@@ -31,14 +36,23 @@ import {
   useGetAdminOrdersQuery,
   useUpdateOrderStatusMutation,
 } from "../../services/orderApi";
-import { useGetStoreByIdQuery } from "../../services/storeApi";
+import {
+  useGetStoreByIdQuery,
+  useGetStoreSettlementSummaryQuery,
+} from "../../services/storeApi";
 import OrderDetailsModal from "../../modals/OrderDetailsModal";
 import AdminOrderChatModal from "../../components/orders/AdminOrderChatModal";
+import StoreSettlementModal from "../../modals/StoreSettlementModal";
+import RecordPayoutModal from "../../modals/RecordPayoutModal";
+import StorePayoutsHistoryModal from "../../modals/StorePayoutsHistoryModal";
+import { exportToCsv } from "../../utils/csvExport";
 import { getAdminSocket } from "../../services/socket";
 
 export default function StoreOrderList() {
   const { storeId } = useParams();
   const navigate = useNavigate();
+  const authUser = useSelector((state) => state.auth?.user);
+  const isAdmin = authUser?.role === "admin";
 
   // Fetch store details
   const {
@@ -50,12 +64,56 @@ export default function StoreOrderList() {
   const [search, setSearch] = useState("");
   const debouncedSearch = useDebouncedValue(search, 500);
   const [statusFilter, setStatusFilter] = useState("");
+  const [dateFilter, setDateFilter] = useState("all");
   const [page, setPage] = useState(1);
   const limit = 10;
 
   // Selected Order for View Details and Chat Modals
   const [selectedOrderDetails, setSelectedOrderDetails] = useState(null);
   const [activeChatOrder, setActiveChatOrder] = useState(null);
+  const [isSettlementModalOpen, setIsSettlementModalOpen] = useState(false);
+  const [isRecordPayoutModalOpen, setIsRecordPayoutModalOpen] = useState(false);
+  const [isPayoutHistoryModalOpen, setIsPayoutHistoryModalOpen] = useState(false);
+
+  // Fetch Store Settlement Summary (Lifetime vs Settled vs Current Pending)
+  const {
+    data: settlementSummaryData,
+    refetch: refetchSettlementSummary,
+  } = useGetStoreSettlementSummaryQuery(storeId, { skip: !storeId });
+
+  const lifetimeData = settlementSummaryData?.data?.lifetime;
+  const settlementData = settlementSummaryData?.data?.settlement;
+
+  const { startDate, endDate, dateRangeLabel } = useMemo(() => {
+    const now = new Date();
+    if (dateFilter === "week") {
+      const d = new Date();
+      d.setDate(d.getDate() - 7);
+      return {
+        startDate: d.toISOString(),
+        endDate: now.toISOString(),
+        dateRangeLabel: "Last 7 Days",
+      };
+    }
+    if (dateFilter === "month") {
+      const start = new Date(now.getFullYear(), now.getMonth(), 1);
+      return {
+        startDate: start.toISOString(),
+        endDate: now.toISOString(),
+        dateRangeLabel: `This Month (${now.toLocaleString("en-IN", { month: "short" })})`,
+      };
+    }
+    if (dateFilter === "last_month") {
+      const start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      const end = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59);
+      return {
+        startDate: start.toISOString(),
+        endDate: end.toISOString(),
+        dateRangeLabel: `Last Month (${start.toLocaleString("en-IN", { month: "short" })})`,
+      };
+    }
+    return { startDate: undefined, endDate: undefined, dateRangeLabel: "All Time" };
+  }, [dateFilter]);
 
   // Fetch store orders
   const {
@@ -70,6 +128,8 @@ export default function StoreOrderList() {
     limit,
     status: statusFilter || undefined,
     search: debouncedSearch.trim() || undefined,
+    startDate,
+    endDate,
   });
 
   const [updateStatus, { isLoading: isUpdatingStatus }] =
@@ -172,6 +232,30 @@ export default function StoreOrderList() {
       socket.off("admin_new_order", handleOrderEvent);
     };
   }, [refetchOrders]);
+
+  const handleExportStoreOrders = () => {
+    if (!orders || orders.length === 0) {
+      toast.error("No orders to export.");
+      return;
+    }
+    const columns = [
+      { key: "order_number", label: "Order #", getValue: (r) => r.order_number || `#${r.id}` },
+      { key: "created_at", label: "Date & Time", getValue: (r) => new Date(r.created_at).toLocaleString("en-IN") },
+      { key: "customer_name", label: "Customer Name", getValue: (r) => r.customer_name || "Guest" },
+      { key: "customer_phone", label: "Customer Phone", getValue: (r) => r.customer_phone || "" },
+      { key: "payment_method", label: "Payment Method", getValue: (r) => r.payment_method || "COD" },
+      { key: "total_amount", label: "Order Total (₹)", getValue: (r) => Number(r.total_amount || 0).toFixed(2) },
+      { key: "admin_commission_amount", label: "Admin Commission (₹)", getValue: (r) => Number(r.admin_commission_amount || 0).toFixed(2) },
+      { key: "store_payable_amount", label: "Store Share (₹)", getValue: (r) => Number(r.store_payable_amount || 0).toFixed(2) },
+      { key: "status", label: "Order Status", getValue: (r) => r.status || "Pending" },
+    ];
+    exportToCsv({
+      filename: `orders-${store?.name?.replace(/\s+/g, "_") || "branch"}-${new Date().toISOString().slice(0, 10)}`,
+      columns,
+      data: orders,
+    });
+    toast.success(`Exported ${orders.length} order(s) to CSV (Excel)!`);
+  };
 
   const handleStatusChange = async (orderId, nextStatus) => {
     const order = orders.find((o) => o.id === orderId);
@@ -354,6 +438,35 @@ export default function StoreOrderList() {
             </div>
 
             <div className="d-flex align-items-center gap-2 flex-wrap w-100 w-sm-auto mt-2 mt-sm-0">
+              <select
+                value={dateFilter}
+                onChange={(e) => setDateFilter(e.target.value)}
+                className="form-select form-select-sm"
+                style={{ width: "auto", fontSize: "12px", fontWeight: 700, borderRadius: "8px", borderColor: "#cbd5e1" }}
+              >
+                <option value="all">Period: All Time</option>
+                <option value="week">Period: Last 7 Days (Weekly)</option>
+                <option value="month">Period: This Month</option>
+                <option value="last_month">Period: Last Month</option>
+              </select>
+              <Button
+                variant="outline"
+                onClick={handleExportStoreOrders}
+                title="Export Store Orders to CSV"
+                className="flex-grow-1 flex-sm-grow-0 d-inline-flex align-items-center gap-1.5"
+              >
+                <FileSpreadsheet size={15} className="text-success" />
+                <span>Export CSV</span>
+              </Button>
+              <Button
+                variant="primary"
+                onClick={() => setIsSettlementModalOpen(true)}
+                title="View & Download Store Settlement PDF Statement"
+                className="flex-grow-1 flex-sm-grow-0 d-inline-flex align-items-center gap-1.5"
+              >
+                <Printer size={15} />
+                <span>Payout Statement (PDF)</span>
+              </Button>
               <Button
                 variant="outline"
                 onClick={() => refetchOrders()}
@@ -376,85 +489,210 @@ export default function StoreOrderList() {
         </div>
       </div>
 
-      {/* Settlement Payout Highlight Box */}
+      {/* 3-Card Store Settlement & Financial Hub */}
       <div
-        className="card mb-3"
         style={{
-          background: netStorePayout >= 0 ? "linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%)" : "linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%)",
-          border: netStorePayout >= 0 ? "1px solid #a7f3d0" : "1px solid #fde68a",
-          borderRadius: "14px",
-          padding: "16px 20px",
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
+          gap: "14px",
+          marginBottom: "18px",
         }}
       >
-        <div className="d-flex flex-column flex-lg-row align-items-start align-items-lg-center justify-content-between gap-3">
+        {/* CARD 1: Lifetime Store Earnings & Total Business */}
+        <div
+          className="card"
+          style={{
+            padding: "16px 18px",
+            background: "#ffffff",
+            borderRadius: "14px",
+            border: "1px solid #e2e8f0",
+            borderTop: "4px solid #4f46e5",
+            boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
+            display: "flex",
+            flexDirection: "column",
+            justifyContent: "space-between",
+          }}
+        >
           <div>
-            <div style={{ fontSize: "11px", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.5px", color: netStorePayout >= 0 ? "#065f46" : "#92400e" }}>
-              {netStorePayout >= 0 ? "Final Net Payout (Admin to Store)" : "Store Due (Store to Admin)"}
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <span style={{ fontSize: "11px", fontWeight: 800, color: "#4f46e5", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                Lifetime Store Business (All-Time)
+              </span>
+              <span style={{ fontSize: "10.5px", background: "#eef2ff", color: "#4338ca", padding: "2px 8px", borderRadius: "10px", fontWeight: 700 }}>
+                {lifetimeData?.total_orders ?? totalOrdersCount} Orders Total
+              </span>
             </div>
-            <div style={{ fontSize: "28px", fontWeight: 900, color: netStorePayout >= 0 ? "#047857" : "#b45309", marginTop: "2px" }}>
-              ₹{Number(Math.abs(netStorePayout)).toLocaleString("en-IN", { maximumFractionDigits: 2 })}
+
+            <div style={{ fontSize: "24px", fontWeight: 900, color: "#1e1b4b", marginTop: "6px" }}>
+              ₹{Number(lifetimeData?.total_store_earnings ?? totalStorePayableAmount).toLocaleString("en-IN", { maximumFractionDigits: 2 })}
             </div>
-            <div style={{ fontSize: "12px", color: "#475569", marginTop: "3px" }}>
-              {netStorePayout >= 0 ? (
+            <div style={{ fontSize: "11.5px", color: "#64748b", marginTop: "2px" }}>
+              Total Sales: <strong>₹{Number(lifetimeData?.total_gross_sales ?? totalRevenueAmount).toLocaleString("en-IN", { maximumFractionDigits: 2 })}</strong>
+            </div>
+          </div>
+
+          <div style={{ marginTop: "12px", paddingTop: "10px", borderTop: "1px dashed #e2e8f0", display: "flex", justifyContent: "space-between", fontSize: "11px", color: "#64748b" }}>
+            <span>Admin Commission Kept:</span>
+            <strong style={{ color: "#7c3aed" }}>₹{Number(lifetimeData?.total_admin_commission ?? totalCommissionAmount).toLocaleString("en-IN", { maximumFractionDigits: 2 })}</strong>
+          </div>
+        </div>
+
+        {/* CARD 2: Total Disbursed / Settled Till Date */}
+        <div
+          className="card"
+          style={{
+            padding: "16px 18px",
+            background: "#ffffff",
+            borderRadius: "14px",
+            border: "1px solid #e2e8f0",
+            borderTop: "4px solid #059669",
+            boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
+            display: "flex",
+            flexDirection: "column",
+            justifyContent: "space-between",
+          }}
+        >
+          <div>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <span style={{ fontSize: "11px", fontWeight: 800, color: "#059669", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                Total Disbursed / Settled
+              </span>
+              <span style={{ fontSize: "10.5px", background: "#dcfce7", color: "#166534", padding: "2px 8px", borderRadius: "10px", fontWeight: 700 }}>
+                {lifetimeData?.settled_orders_count ?? 0} Orders Settled
+              </span>
+            </div>
+
+            <div style={{ fontSize: "24px", fontWeight: 900, color: "#065f46", marginTop: "6px" }}>
+              ₹{Number(settlementData?.total_already_paid ?? 0).toLocaleString("en-IN", { maximumFractionDigits: 2 })}
+            </div>
+            <div style={{ fontSize: "11.5px", color: "#64748b", marginTop: "2px" }}>
+              {settlementData?.last_payout ? (
                 <span>
-                  Admin will transfer <strong>₹{Number(netStorePayout).toLocaleString("en-IN", { maximumFractionDigits: 2 })}</strong> to Store (Online Share ₹{Number(onlineStorePayable).toLocaleString("en-IN", { maximumFractionDigits: 0 })} minus COD Comm ₹{Number(codCommission).toLocaleString("en-IN", { maximumFractionDigits: 0 })})
+                  Last payout: <strong>₹{Number(settlementData.last_payout.amount || 0).toLocaleString("en-IN")}</strong> on{" "}
+                  {new Date(settlementData.last_payout.created_at).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
                 </span>
               ) : (
-                <span>
-                  Store collected more cash commission (₹{Number(codCommission).toLocaleString("en-IN", { maximumFractionDigits: 0 })}) than online earnings (₹{Number(onlineStorePayable).toLocaleString("en-IN", { maximumFractionDigits: 0 })}). Store owes ₹{Number(Math.abs(netStorePayout)).toLocaleString("en-IN", { maximumFractionDigits: 2 })}.
-                </span>
+                <span>No past payouts recorded yet.</span>
               )}
             </div>
           </div>
 
-          {/* Breakdown Pills: Online vs COD */}
-          <div className="d-flex align-items-center gap-2 flex-wrap w-100 w-lg-auto">
-            {/* Online Orders Pill */}
-            <div
-              style={{
-                background: "#ffffff",
-                border: "1px solid #bfdbfe",
-                borderRadius: "10px",
-                padding: "8px 12px",
-                minWidth: "160px",
-                flex: "1 1 auto",
-              }}
+          <div style={{ marginTop: "12px", paddingTop: "10px", borderTop: "1px dashed #e2e8f0" }}>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setIsPayoutHistoryModalOpen(true)}
+              className="w-100 d-inline-flex align-items-center justify-content-center gap-1.5"
+              style={{ fontSize: "11.5px", padding: "5px 12px", borderRadius: "8px", borderColor: "#a7f3d0", color: "#047857" }}
             >
-              <div style={{ fontSize: "10.5px", fontWeight: 700, color: "#1d4ed8", textTransform: "uppercase" }}>
-                Online Orders ({onlineOrdersCount})
-              </div>
-              <div style={{ fontSize: "14px", fontWeight: 800, color: "#0f172a", marginTop: "2px" }}>
-                Payable: ₹{Number(onlineStorePayable).toLocaleString("en-IN", { maximumFractionDigits: 2 })}
-              </div>
-              <div style={{ fontSize: "10px", color: "#64748b" }}>
-                Volume: ₹{Number(onlineTotalAmount).toLocaleString("en-IN", { maximumFractionDigits: 0 })} | Comm: ₹{Number(onlineCommission).toLocaleString("en-IN", { maximumFractionDigits: 0 })}
-              </div>
+              <History size={13} />
+              <span>View Past Payouts History</span>
+            </Button>
+          </div>
+        </div>
+
+        {/* CARD 3: Current Due / Active Cycle Pending */}
+        <div
+          className="card"
+          style={{
+            padding: "16px 18px",
+            background: (settlementData?.current_pending_payout ?? netStorePayout) >= 0
+              ? "linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%)"
+              : "linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%)",
+            borderRadius: "14px",
+            border: (settlementData?.current_pending_payout ?? netStorePayout) >= 0 ? "1px solid #a7f3d0" : "1px solid #fde68a",
+            borderTop: (settlementData?.current_pending_payout ?? netStorePayout) >= 0 ? "4px solid #10b981" : "4px solid #f59e0b",
+            boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
+            display: "flex",
+            flexDirection: "column",
+            justifyContent: "space-between",
+          }}
+        >
+          <div>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <span
+                style={{
+                  fontSize: "11px",
+                  fontWeight: 800,
+                  color: (settlementData?.current_pending_payout ?? netStorePayout) >= 0 ? "#065f46" : "#92400e",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.5px",
+                }}
+              >
+                Current Pending Due (To Settle)
+              </span>
+              <span
+                style={{
+                  fontSize: "10.5px",
+                  background: "#ffffff",
+                  color: (settlementData?.current_pending_payout ?? netStorePayout) >= 0 ? "#047857" : "#b45309",
+                  padding: "2px 8px",
+                  borderRadius: "10px",
+                  fontWeight: 700,
+                  border: "1px solid #cbd5e1",
+                }}
+              >
+                {settlementData?.unsettled_orders_count ?? 0} Orders Due
+              </span>
             </div>
 
-            {/* COD Orders Pill */}
             <div
               style={{
-                background: "#ffffff",
-                border: "1px solid #fde68a",
-                borderRadius: "10px",
-                padding: "8px 12px",
-                minWidth: "160px",
-                flex: "1 1 auto",
+                fontSize: "24px",
+                fontWeight: 900,
+                color: (settlementData?.current_pending_payout ?? netStorePayout) >= 0 ? "#047857" : "#b45309",
+                marginTop: "6px",
               }}
             >
-              <div style={{ fontSize: "10.5px", fontWeight: 700, color: "#b45309", textTransform: "uppercase" }}>
-                COD Orders ({codOrdersCount})
-              </div>
-              <div style={{ fontSize: "14px", fontWeight: 800, color: "#b91c1c", marginTop: "2px" }}>
-                Admin Comm: -₹{Number(codCommission).toLocaleString("en-IN", { maximumFractionDigits: 2 })}
-              </div>
-              <div style={{ fontSize: "10px", color: "#64748b" }}>
-                Cash with Store: ₹{Number(codTotalAmount).toLocaleString("en-IN", { maximumFractionDigits: 0 })}
-              </div>
+              ₹{Number(Math.abs(settlementData?.current_pending_payout ?? netStorePayout)).toLocaleString("en-IN", { maximumFractionDigits: 2 })}
             </div>
+            <div style={{ fontSize: "11.5px", color: "#475569", marginTop: "2px" }}>
+              {(settlementData?.current_pending_payout ?? netStorePayout) >= 0 ? (
+                <span>
+                  Admin owes Store (Online: ₹{Number(settlementData?.unsettled_online_payable ?? onlineStorePayable).toLocaleString("en-IN", { maximumFractionDigits: 0 })} − COD Comm: ₹{Number(settlementData?.unsettled_cod_commission ?? codCommission).toLocaleString("en-IN", { maximumFractionDigits: 0 })})
+                </span>
+              ) : (
+                <span>Store owes Admin (COD cash collected exceeds online earnings).</span>
+              )}
+            </div>
+          </div>
+
+          <div
+            style={{
+              marginTop: "12px",
+              paddingTop: "10px",
+              borderTop: "1px dashed #cbd5e1",
+              display: "flex",
+              gap: "8px",
+              flexWrap: "wrap",
+            }}
+          >
+            {isAdmin && (
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={() => setIsRecordPayoutModalOpen(true)}
+                className="flex-grow-1 d-inline-flex align-items-center justify-content-center gap-1.5"
+                style={{ fontSize: "11.5px", padding: "6px 12px", borderRadius: "8px" }}
+              >
+                <BadgeIndianRupee size={14} />
+                <span>Record Payout & Settle</span>
+              </Button>
+            )}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setIsSettlementModalOpen(true)}
+              className="flex-grow-1 d-inline-flex align-items-center justify-content-center gap-1.5"
+              style={{ fontSize: "11.5px", padding: "6px 12px", borderRadius: "8px", background: "#ffffff" }}
+            >
+              <Printer size={13} />
+              <span>Statement (PDF)</span>
+            </Button>
           </div>
         </div>
       </div>
+
 
       {/* Metric Cards */}
       <div
@@ -899,7 +1137,7 @@ export default function StoreOrderList() {
 
                 return (
                   <div>
-                    <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
                       <span style={{ fontWeight: 800, fontSize: "14px", color: isCod ? "#0f172a" : "#15803d" }}>
                         ₹{payable.toLocaleString("en-IN", { maximumFractionDigits: 2 })}
                       </span>
@@ -917,6 +1155,38 @@ export default function StoreOrderList() {
                       >
                         {isCod ? "Store Cash" : "Admin Payout"}
                       </span>
+                      {order.is_settled_to_store ? (
+                        <span
+                          style={{
+                            fontSize: "10px",
+                            fontWeight: 700,
+                            padding: "1px 6px",
+                            borderRadius: "4px",
+                            background: "#dcfce7",
+                            color: "#166534",
+                            border: "1px solid #86efac",
+                            whiteSpace: "nowrap",
+                          }}
+                          title={order.settled_at ? `Settled on ${new Date(order.settled_at).toLocaleDateString("en-IN")}` : "Settled"}
+                        >
+                          ✓ Settled
+                        </span>
+                      ) : (
+                        <span
+                          style={{
+                            fontSize: "10px",
+                            fontWeight: 700,
+                            padding: "1px 6px",
+                            borderRadius: "4px",
+                            background: "#f8fafc",
+                            color: "#64748b",
+                            border: "1px solid #cbd5e1",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          Pending
+                        </span>
+                      )}
                     </div>
                     <div style={{ fontSize: "10.5px", color: "#64748b", marginTop: "2px", whiteSpace: "nowrap" }}>
                       Gross: ₹{gross.toFixed(0)} | Comm: -₹{comm.toFixed(0)}
@@ -1053,7 +1323,39 @@ export default function StoreOrderList() {
           onClose={() => setActiveChatOrder(null)}
         />
       )}
+
+      {/* Store Settlement Statement PDF Modal */}
+      <StoreSettlementModal
+        isOpen={isSettlementModalOpen}
+        onClose={() => setIsSettlementModalOpen(false)}
+        store={store}
+        orders={orders}
+        stats={stats}
+        dateRangeLabel={dateRangeLabel}
+        startDate={startDate}
+        endDate={endDate}
+      />
+
+      {/* Record Payout & Settle Orders Modal */}
+      <RecordPayoutModal
+        isOpen={isRecordPayoutModalOpen}
+        onClose={() => setIsRecordPayoutModalOpen(false)}
+        store={store}
+        settlementData={settlementData}
+        onSuccess={() => {
+          refetchSettlementSummary();
+          refetchOrders();
+        }}
+      />
+
+      {/* Store Past Payouts History Modal */}
+      <StorePayoutsHistoryModal
+        isOpen={isPayoutHistoryModalOpen}
+        onClose={() => setIsPayoutHistoryModalOpen(false)}
+        store={store}
+      />
     </>
   );
 }
+
 

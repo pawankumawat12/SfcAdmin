@@ -22,7 +22,9 @@ import {
   Code,
   Calculator,
   X,
+  FileSpreadsheet,
 } from "lucide-react";
+import toast from "react-hot-toast";
 import { toAssetUrl } from "../../utils/assetUrl";
 import { useGetDashboardOverviewQuery } from "../../services/dashboardApi";
 import { useGetMyStoreQuery } from "../../services/storeApi";
@@ -30,6 +32,7 @@ import DataTable from "../../components/common/DataTable";
 import { useShopStatus } from "../../utils/useShopStatus";
 import { useThrottledCallback } from "../../utils/throttle";
 import { getAdminSocket } from "../../services/socket";
+import { exportToCsv } from "../../utils/csvExport";
 
 function formatRupee(num) {
   if (num == null) return "0";
@@ -56,6 +59,58 @@ export default function Dashboard() {
   } = useGetDashboardOverviewQuery({ timeframe });
 
   const throttledRefetch = useThrottledCallback(() => refetch(), 1500);
+
+  const handleExportSalesReport = () => {
+    try {
+      if (recentOrders && recentOrders.length > 0) {
+        const columns = [
+          { key: "order_number", label: "Order Number", getValue: (r) => r.order_number || `#${r.id}` },
+          { key: "created_at", label: "Date & Time", getValue: (r) => new Date(r.created_at).toLocaleString("en-IN") },
+          { key: "customer_name", label: "Customer Name", getValue: (r) => r.customer_name || "Guest" },
+          { key: "customer_phone", label: "Customer Phone", getValue: (r) => r.customer_phone || "" },
+          { key: "items_count", label: "Items", getValue: (r) => r.items_count || 1 },
+          { key: "total_amount", label: "Total Amount (₹)", getValue: (r) => Number(r.total_amount || 0).toFixed(2) },
+          { key: "payment_method", label: "Payment Mode", getValue: (r) => r.payment_method || "COD" },
+          { key: "payment_status", label: "Payment Status", getValue: (r) => r.payment_status || "Pending" },
+          { key: "status", label: "Order Status", getValue: (r) => r.status || "Completed" },
+        ];
+
+        exportToCsv({
+          filename: `sales-report-${timeframe}-${new Date().toISOString().slice(0, 10)}`,
+          columns,
+          data: recentOrders,
+        });
+        toast.success(`Exported ${recentOrders.length} sales order(s) to CSV!`);
+      } else {
+        const summaryColumns = [
+          { key: "metric", label: "KPI Metric" },
+          { key: "value", label: "Value" },
+        ];
+        const summaryData = [
+          { metric: "Selected Timeframe", value: timeframe },
+          { metric: "Gross Revenue (₹)", value: kpis.totalRevenue },
+          { metric: "Total Orders", value: kpis.totalOrders },
+          { metric: "Average Order Value (₹)", value: avgOrderValue },
+          { metric: "Delivered Orders", value: statusDistribution.delivered || 0 },
+          { metric: "Pending/In-Kitchen Orders", value: (statusDistribution.preparing || 0) + (statusDistribution.out_for_delivery || 0) },
+          { metric: "Cancelled Orders", value: statusDistribution.cancelled || 0 },
+          { metric: "Store Commission Collected (₹)", value: kpis.totalAdminCommission },
+          { metric: "Customer Platform Fee (₹)", value: kpis.totalPlatformFee },
+          { metric: "Developer Tech Royalty (₹)", value: kpis.developerTotalPayout },
+        ];
+
+        exportToCsv({
+          filename: `sales-summary-${timeframe}-${new Date().toISOString().slice(0, 10)}`,
+          columns: summaryColumns,
+          data: summaryData,
+        });
+        toast.success("Dashboard metrics summary exported to CSV!");
+      }
+    } catch (err) {
+      console.error(err);
+      toast.error("Failed to export sales report");
+    }
+  };
 
   // Silent real-time updates for dashboard KPIs and recent orders
   useEffect(() => {
@@ -514,6 +569,30 @@ export default function Dashboard() {
               </button>
             ))}
           </div>
+
+          <button
+            type="button"
+            onClick={handleExportSalesReport}
+            title="Export Sales Report to Excel / CSV"
+            style={{
+              height: "36px",
+              padding: "0 12px",
+              borderRadius: "10px",
+              border: "1px solid #cbd5e1",
+              background: "#ffffff",
+              display: "flex",
+              alignItems: "center",
+              gap: "6px",
+              cursor: "pointer",
+              color: "#166534",
+              fontSize: "12px",
+              fontWeight: 700,
+              boxShadow: "0 1px 2px rgba(0,0,0,0.05)",
+            }}
+          >
+            <FileSpreadsheet size={15} className="text-success" />
+            <span>Export Report</span>
+          </button>
 
           <button
             type="button"

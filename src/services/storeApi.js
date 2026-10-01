@@ -138,6 +138,35 @@ export const storeApi = baseApi.injectEndpoints({
       }),
       invalidatesTags: ["Stores"],
     }),
+
+    getStoreSettlementSummary: builder.query({
+      query: (id) => ({
+        url: `/stores/${id}/settlement-summary`,
+        method: "GET",
+      }),
+      providesTags: (result, error, id) => [{ type: "StoreSettlement", id }],
+    }),
+
+    getStorePayouts: builder.query({
+      query: (id) => ({
+        url: `/stores/${id}/payouts`,
+        method: "GET",
+      }),
+      providesTags: (result, error, id) => [{ type: "StorePayouts", id }],
+    }),
+
+    recordStorePayout: builder.mutation({
+      query: ({ storeId, ...body }) => ({
+        url: `/stores/${storeId}/payouts`,
+        method: "POST",
+        body,
+      }),
+      invalidatesTags: (result, error, { storeId }) => [
+        { type: "StoreSettlement", id: storeId },
+        { type: "StorePayouts", id: storeId },
+        "Orders",
+      ],
+    }),
   }),
   overrideExisting: false,
 });
@@ -158,5 +187,8 @@ export const {
   useSetStorePasswordMutation,
   useGetMyStoreQuery,
   useUpdateMyStoreLocationMutation,
+  useGetStoreSettlementSummaryQuery,
+  useGetStorePayoutsQuery,
+  useRecordStorePayoutMutation,
 } = storeApi;
 
