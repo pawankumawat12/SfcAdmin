@@ -14,6 +14,8 @@ import {
   useSendEmailOtpMutation,
   useUpdateEmailSettingsMutation,
   useTestEmailMutation,
+  useGetDeveloperSettingsQuery,
+  useUpdateDeveloperSettingsMutation,
 } from "../../services/settingsApi";
 import toast from "react-hot-toast";
 import StoreLocationPicker from "./StoreLocationPicker";
@@ -577,6 +579,59 @@ export default function Settings() {
     }
   };
 
+  /* ─── DEVELOPER BRANDING & INQUIRY SETTINGS STATE ─── */
+  const { data: devResponse, isLoading: devLoading } = useGetDeveloperSettingsQuery();
+  const [updateDeveloperSettings, { isLoading: devSaving }] = useUpdateDeveloperSettingsMutation();
+
+  const [devForm, setDevForm] = useState({
+    is_enabled: true,
+    developer_name: "Pawan Kumawat",
+    developer_email: "pawankumawat9009@gmail.com",
+    developer_phone: "7690939596",
+    developer_whatsapp: "917690939596",
+    developer_tagline: "Custom Food Ordering Websites, Cafe Apps & Enterprise Software",
+    custom_inquiry_message: "Hi Pawan, I saw the SFC Bakers website and want to build a similar website/app for my business.",
+    show_in_frontend: true,
+    show_in_store_dashboard: true,
+  });
+  const [devStatus, setDevStatus] = useState({ text: "", type: "" });
+
+  useEffect(() => {
+    if (devResponse?.data) {
+      setDevForm({
+        is_enabled: devResponse.data.is_enabled !== false,
+        developer_name: devResponse.data.developer_name || "Pawan Kumawat",
+        developer_email: devResponse.data.developer_email || "pawankumawat9009@gmail.com",
+        developer_phone: devResponse.data.developer_phone || "7690939596",
+        developer_whatsapp: devResponse.data.developer_whatsapp || "917690939596",
+        developer_tagline: devResponse.data.developer_tagline || "Custom Food Ordering Websites, Cafe Apps & Enterprise Software",
+        custom_inquiry_message: devResponse.data.custom_inquiry_message || "Hi Pawan, I saw the SFC Bakers website and want to build a similar website/app for my business.",
+        show_in_frontend: devResponse.data.show_in_frontend !== false,
+        show_in_store_dashboard: devResponse.data.show_in_store_dashboard !== false,
+      });
+    }
+  }, [devResponse]);
+
+  const handleDevChange = (field) => (e) => {
+    const val = e.target.type === "checkbox" ? e.target.checked : e.target.value;
+    setDevForm((prev) => ({ ...prev, [field]: val }));
+  };
+
+  const handleSaveDeveloper = async (e) => {
+    if (e) e.preventDefault();
+    try {
+      setDevStatus({ text: "", type: "" });
+      await updateDeveloperSettings(devForm).unwrap();
+      setDevStatus({ text: "Developer settings saved successfully!", type: "success" });
+      toast.success("Developer settings updated successfully!");
+      setTimeout(() => setDevStatus({ text: "", type: "" }), 4000);
+    } catch (err) {
+      console.error(err);
+      setDevStatus({ text: err?.data?.message || "Failed to update developer settings", type: "error" });
+      toast.error(err?.data?.message || "Failed to update developer settings");
+    }
+  };
+
   /* ─── Footer form field config ─── */
   const footerFields = [
     {
@@ -1020,6 +1075,219 @@ export default function Settings() {
               <>
                 <Check size={16} />
                 Save Footer Settings
+              </>
+            )}
+          </Button>
+        </div>
+      </section>
+
+      {/* ─── DEVELOPER BRANDING & INQUIRY SETTINGS CARD ─── */}
+      <section style={cardStyle}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            borderBottom: "1px solid #f0f0f5",
+            paddingBottom: "16px",
+            marginBottom: "22px",
+            flexWrap: "wrap",
+            gap: "12px",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+            <div
+              style={{
+                width: "40px",
+                height: "40px",
+                borderRadius: "10px",
+                backgroundColor: "#eff6ff",
+                color: "#2563eb",
+                display: "grid",
+                placeItems: "center",
+              }}
+            >
+              <Code size={22} />
+            </div>
+            <div>
+              <h2
+                style={{
+                  margin: 0,
+                  fontSize: "17px",
+                  fontWeight: 700,
+                  color: "#24243b",
+                }}
+              >
+                Developer Branding & Client Lead Settings
+              </h2>
+              <p style={{ margin: 0, fontSize: "12px", color: "#8b8ba0" }}>
+                Control developer attribution, WhatsApp inquiries, and portfolio lead generation across Frontend & Store Dashboard.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <StatusBanner text={devStatus.text} type={devStatus.type} />
+
+        {/* DEVELOPER DETAILS GRID */}
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
+            gap: "16px",
+            marginBottom: "20px",
+          }}
+        >
+          {/* Developer Name */}
+          <div>
+            <label style={sectionLabel}>Developer Name</label>
+            <input
+              type="text"
+              style={inputStyle}
+              placeholder="e.g. Pawan Kumawat"
+              value={devForm.developer_name}
+              onChange={handleDevChange("developer_name")}
+            />
+          </div>
+
+          {/* Developer Email */}
+          <div>
+            <label style={sectionLabel}>Developer Email</label>
+            <input
+              type="email"
+              style={inputStyle}
+              placeholder="e.g. pawankumawat9009@gmail.com"
+              value={devForm.developer_email}
+              onChange={handleDevChange("developer_email")}
+            />
+          </div>
+
+          {/* Phone Number */}
+          <div>
+            <label style={sectionLabel}>Phone Number</label>
+            <input
+              type="text"
+              style={inputStyle}
+              placeholder="e.g. 7690939596"
+              value={devForm.developer_phone}
+              onChange={handleDevChange("developer_phone")}
+            />
+          </div>
+
+          {/* WhatsApp Number */}
+          <div>
+            <label style={sectionLabel}>WhatsApp Number (With Country Code)</label>
+            <input
+              type="text"
+              style={inputStyle}
+              placeholder="e.g. 917690939596"
+              value={devForm.developer_whatsapp}
+              onChange={handleDevChange("developer_whatsapp")}
+            />
+          </div>
+        </div>
+
+        {/* Tagline & Inquiry Message */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: "16px", marginBottom: "20px" }}>
+          <div>
+            <label style={sectionLabel}>Services Tagline (Shown in Footer)</label>
+            <input
+              type="text"
+              style={inputStyle}
+              placeholder="e.g. Custom Food Ordering Websites, Cafe Apps & Enterprise Software"
+              value={devForm.developer_tagline}
+              onChange={handleDevChange("developer_tagline")}
+            />
+          </div>
+
+          <div>
+            <label style={sectionLabel}>Pre-Filled WhatsApp Message</label>
+            <input
+              type="text"
+              style={inputStyle}
+              placeholder="e.g. Hi Pawan, I saw the SFC Bakers website and want to build a similar website for my business."
+              value={devForm.custom_inquiry_message}
+              onChange={handleDevChange("custom_inquiry_message")}
+            />
+            <span style={{ fontSize: "11px", color: "#8b8ba0", marginTop: "4px", display: "block" }}>
+              When a visitor or store owner clicks "Build Your Website" or "WhatsApp Developer", this message opens automatically.
+            </span>
+          </div>
+        </div>
+
+        {/* DISPLAY TOGGLE SWITCHES */}
+        <div
+          style={{
+            background: "#f8fafc",
+            border: "1px solid #e2e8f0",
+            borderRadius: "12px",
+            padding: "16px",
+            marginBottom: "24px",
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+            gap: "14px",
+          }}
+        >
+          <label style={{ display: "flex", alignItems: "center", gap: "10px", cursor: "pointer", userSelect: "none" }}>
+            <input
+              type="checkbox"
+              checked={devForm.show_in_frontend}
+              onChange={handleDevChange("show_in_frontend")}
+              style={{ width: "16px", height: "16px", accentColor: "#2563eb", cursor: "pointer" }}
+            />
+            <span style={{ fontSize: "13px", fontWeight: 600, color: "#1e293b" }}>
+              Show on Customer Frontend Footer
+            </span>
+          </label>
+
+          <label style={{ display: "flex", alignItems: "center", gap: "10px", cursor: "pointer", userSelect: "none" }}>
+            <input
+              type="checkbox"
+              checked={devForm.show_in_store_dashboard}
+              onChange={handleDevChange("show_in_store_dashboard")}
+              style={{ width: "16px", height: "16px", accentColor: "#2563eb", cursor: "pointer" }}
+            />
+            <span style={{ fontSize: "13px", fontWeight: 600, color: "#1e293b" }}>
+              Show on Store Owner Sidebar
+            </span>
+          </label>
+
+          <label style={{ display: "flex", alignItems: "center", gap: "10px", cursor: "pointer", userSelect: "none" }}>
+            <input
+              type="checkbox"
+              checked={devForm.is_enabled}
+              onChange={handleDevChange("is_enabled")}
+              style={{ width: "16px", height: "16px", accentColor: "#2563eb", cursor: "pointer" }}
+            />
+            <span style={{ fontSize: "13px", fontWeight: 600, color: "#1e293b" }}>
+              Enable Developer Branding Globally
+            </span>
+          </label>
+        </div>
+
+        {/* SAVE BUTTON */}
+        <div style={{ display: "flex", justifyContent: "flex-end" }}>
+          <Button
+            type="button"
+            onClick={handleSaveDeveloper}
+            disabled={devSaving || devLoading}
+            style={{
+              minWidth: "180px",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: "8px",
+            }}
+          >
+            {devSaving ? (
+              <>
+                <RefreshCw size={16} className="animate-spin" />
+                Saving...
+              </>
+            ) : (
+              <>
+                <Check size={16} />
+                Save Developer Settings
               </>
             )}
           </Button>
@@ -1663,7 +1931,7 @@ export default function Settings() {
                 justifyContent: "flex-end",
                 gap: "10px",
               }}
-            >
+            > 
               <button
                 type="button"
                 onClick={() => {
@@ -1877,10 +2145,7 @@ export default function Settings() {
                   Zero-Upfront Tech Model
                 </span>
               </div>
-              <p className="text-muted small mb-3">
-                Since development had zero upfront charges, the developer earns from:
-                <strong> 100% of the Platform Fee</strong> (paid by customers) + a share of the <strong>Store Commission</strong> collected from branch stores.
-              </p>
+             
             </div>
 
             <div className="row g-4">

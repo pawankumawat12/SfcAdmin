@@ -124,6 +124,19 @@ export const settingsApi = baseApi.injectEndpoints({
       }),
       invalidatesTags: ["Settings", "DynamicQr"],
     }),
+
+    getDeveloperSettings: build.query({
+      query: () => "/settings/developer",
+      providesTags: ["Settings", "DeveloperSettings"],
+    }),
+    updateDeveloperSettings: build.mutation({
+      query: (body) => ({
+        url: "/settings/developer",
+        method: "PUT",
+        body,
+      }),
+      invalidatesTags: ["Settings", "DeveloperSettings"],
+    }),
   }),
 });
 
@@ -147,4 +160,6 @@ export const {
   useUpdateStoreStatusMutation,
   useGetDynamicQrQuery,
   useUpdateDynamicQrMutation,
+  useGetDeveloperSettingsQuery,
+  useUpdateDeveloperSettingsMutation,
 } = settingsApi;

@@ -38,6 +38,7 @@ import {
   Store,
   MapPin,
   Film,
+  Code,
 } from "lucide-react";
 import { baseApi } from "../services/baseApi";
 import {
@@ -51,7 +52,7 @@ import {
   useGetMyStoreQuery,
   useToggleStoreStatusMutation,
 } from "../services/storeApi";
-import { settingsApi } from "../services/settingsApi";
+import { settingsApi, useGetDeveloperSettingsQuery } from "../services/settingsApi";
 import { getAdminSocket, disconnectAdminSocket } from "../services/socket";
 import { toAssetUrl } from "../utils/assetUrl";
 import { useShopStatus } from "../utils/useShopStatus";
@@ -255,6 +256,8 @@ export default function AdminLayout() {
 
   const user = useSelector((state) => state.auth.user);
   const isAdmin = user?.role === "admin";
+  const { data: devSettingsResponse } = useGetDeveloperSettingsQuery();
+  const devSettings = devSettingsResponse?.data;
   const { data: whatsappStatusData } = useGetWhatsAppStatusQuery(undefined, {
     skip: !isAdmin,
     pollingInterval: 30000,
@@ -671,7 +674,71 @@ export default function AdminLayout() {
           })}
         </nav>
 
-        
+        {/* STORE OWNER DEVELOPER INQUIRY CARD */}
+        {isStoreOwner && devSettings?.is_enabled && devSettings?.show_in_store_dashboard && (
+          <div
+            style={{
+              margin: "16px 12px",
+              padding: "13px",
+              background: "linear-gradient(135deg, rgba(37, 99, 235, 0.12) 0%, rgba(30, 64, 175, 0.22) 100%)",
+              border: "1px solid rgba(59, 130, 246, 0.35)",
+              borderRadius: "14px",
+              color: "#ffffff",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "6px" }}>
+              <div
+                style={{
+                  width: "28px",
+                  height: "28px",
+                  borderRadius: "8px",
+                  background: "#2563eb",
+                  color: "#ffffff",
+                  display: "grid",
+                  placeItems: "center",
+                  flexShrink: 0,
+                }}
+              >
+                <Code size={15} />
+              </div>
+              <div>
+                <div style={{ fontSize: "10px", fontWeight: 800, color: "#93c5fd", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                  Developer Support
+                </div>
+                <div style={{ fontSize: "12.5px", fontWeight: 800, color: "#ffffff" }}>
+                  {devSettings.developer_name || "Pawan Kumawat"}
+                </div>
+              </div>
+            </div>
+            <p style={{ margin: "6px 0 10px 0", fontSize: "11px", color: "rgba(255,255,255,0.8)", lineHeight: "1.4" }}>
+              Want a custom website, billing app, or software for your other business?
+            </p>
+            <a
+              href={`https://wa.me/${(devSettings.developer_whatsapp || "917690939596").replace(/\D/g, "")}?text=${encodeURIComponent(
+                `Hi Pawan, I am a store partner at SFC Bakers and want to discuss custom software/website development for my business.`
+              )}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: "6px",
+                padding: "7px 10px",
+                background: "#22c55e",
+                color: "#ffffff",
+                borderRadius: "8px",
+                fontSize: "11px",
+                fontWeight: 700,
+                textDecoration: "none",
+                boxShadow: "0 2px 4px rgba(34, 197, 94, 0.3)",
+              }}
+            >
+              <WhatsAppIcon size={14} />
+              <span>WhatsApp Developer</span>
+            </a>
+          </div>
+        )}
       </aside>
 
       <div className="main-area">
