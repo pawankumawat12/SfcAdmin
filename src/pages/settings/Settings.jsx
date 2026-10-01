@@ -50,6 +50,7 @@ import {
   X,
   Store,
   Power,
+  Code,
 } from "lucide-react";
 import { FaFacebook, FaTwitter, FaInstagram } from "react-icons/fa";
 import { toAssetUrl } from "../../utils/assetUrl";
@@ -187,6 +188,11 @@ export default function Settings() {
       store_latitude: "",
       store_longitude: "",
       discount_percent: "",
+      store_commission_type: "percent",
+      store_commission_value: "",
+      store_commission_min_order_amount: "",
+      developer_commission_type: "percent",
+      developer_commission_value: "",
     },
   });
 
@@ -221,6 +227,11 @@ export default function Settings() {
         store_latitude: priceSetting.data.store_latitude ?? "",
         store_longitude: priceSetting.data.store_longitude ?? "",
         discount_percent: priceSetting.data.discount_percent ?? "",
+        store_commission_type: priceSetting.data.store_commission_type ?? "percent",
+        store_commission_value: priceSetting.data.store_commission_value ?? "",
+        store_commission_min_order_amount: priceSetting.data.store_commission_min_order_amount ?? "",
+        developer_commission_type: priceSetting.data.developer_commission_type ?? "percent",
+        developer_commission_value: priceSetting.data.developer_commission_value ?? "",
       });
     }
   }, [priceSetting, reset]);
@@ -248,6 +259,13 @@ export default function Settings() {
         store_longitude: Number(data.store_longitude),
 
         discount_percent: Number(data.discount_percent),
+
+        store_commission_type: data.store_commission_type || "percent",
+        store_commission_value: Number(data.store_commission_value) || 0,
+        store_commission_min_order_amount: Number(data.store_commission_min_order_amount) || 0,
+
+        developer_commission_type: data.developer_commission_type || "percent",
+        developer_commission_value: Number(data.developer_commission_value) || 0,
       };
 
       const response = await updateOrderPricingSettings(payload).unwrap();
@@ -1776,6 +1794,153 @@ export default function Settings() {
                 <option value="false">No</option>
                 <option value="true">Yes</option>
               </select>
+            </div>
+          </div>
+
+          {/* Store Branch Commission Settings */}
+          <div className="border-top pt-4 mb-4">
+            <div className="mb-3">
+              <h3 className="fs-6 fw-bold text-dark mb-1 d-flex align-items-center gap-2">
+                <Banknote size={16} className="text-primary" />
+                Store Branch Commission Settings
+              </h3>
+              <p className="text-muted small mb-0">
+                Configure commission deducted from store branch payouts per order. Store owners receive Product Price, Delivery Fee, and Packaging Fee minus this Admin Commission.
+              </p>
+            </div>
+
+            <div className="row g-4">
+              <div className="col-12 col-md-4">
+                <label className="form-label fw-semibold small text-dark d-flex align-items-center gap-2">
+                  <Sliders size={14} />
+                  Commission Type
+                </label>
+                <select
+                  className="form-select"
+                  {...register("store_commission_type")}
+                >
+                  <option value="percent">Percentage (%)</option>
+                  <option value="fixed">Fixed Flat (₹)</option>
+                </select>
+                <div className="form-text small text-muted">
+                  Calculate as % of subtotal or flat fee per order.
+                </div>
+              </div>
+
+              <div className="col-12 col-md-4">
+                <label className="form-label fw-semibold small text-dark d-flex align-items-center gap-2">
+                  <Percent size={14} />
+                  Commission Value ({watch("store_commission_type") === "fixed" ? "₹" : "%"})
+                </label>
+                <input
+                  type="number"
+                  step="any"
+                  min="0"
+                  placeholder={watch("store_commission_type") === "fixed" ? "e.g. 50" : "e.g. 10"}
+                  className="form-control"
+                  {...register("store_commission_value")}
+                />
+                <div className="form-text small text-muted">
+                  Rate to deduct from the order settlement.
+                </div>
+              </div>
+
+              <div className="col-12 col-md-4">
+                <label className="form-label fw-semibold small text-dark d-flex align-items-center gap-2">
+                  <ShoppingCart size={14} />
+                  Min Order Amount for Commission (₹)
+                </label>
+                <input
+                  type="number"
+                  step="any"
+                  min="0"
+                  placeholder="e.g. 0 (all orders) or 200"
+                  className="form-control"
+                  {...register("store_commission_min_order_amount")}
+                />
+                <div className="form-text small text-muted">
+                  Commission applies only if order subtotal is at or above this.
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Developer Tech Royalty & Maintenance Share (Confidential - Admin Only) */}
+          <div className="border-top pt-4 mb-4">
+            <div className="mb-2">
+              <div className="d-flex align-items-center justify-content-between flex-wrap gap-2">
+                <h3 className="fs-6 fw-bold text-dark mb-1 d-flex align-items-center gap-2">
+                  <Code size={16} className="text-primary" />
+                  Developer Tech Royalty & Maintenance Share (Admin Only)
+                </h3>
+                <span className="badge bg-primary-subtle text-primary border border-primary-subtle fw-semibold">
+                  Zero-Upfront Tech Model
+                </span>
+              </div>
+              <p className="text-muted small mb-3">
+                Since development had zero upfront charges, the developer earns from:
+                <strong> 100% of the Platform Fee</strong> (paid by customers) + a share of the <strong>Store Commission</strong> collected from branch stores.
+              </p>
+            </div>
+
+            <div className="row g-4">
+              <div className="col-12 col-md-4">
+                <label className="form-label fw-semibold small text-dark d-flex align-items-center gap-2">
+                  <CreditCard size={14} className="text-success" />
+                  Customer Platform Fee (100% Developer)
+                </label>
+                <div className="input-group">
+                  <span className="input-group-text bg-light text-muted">₹</span>
+                  <input
+                    type="number"
+                    step="any"
+                    min="0"
+                    placeholder="e.g. 5"
+                    className="form-control"
+                    {...register("platform_fee")}
+                  />
+                </div>
+                <div className="form-text small text-muted">
+                  Customer pays this on checkout. 100% routes to developer tech fee.
+                </div>
+              </div>
+
+              <div className="col-12 col-md-4">
+                <label className="form-label fw-semibold small text-dark d-flex align-items-center gap-2">
+                  <Sliders size={14} />
+                  Developer Share from Store Commission
+                </label>
+                <select
+                  className="form-select"
+                  {...register("developer_commission_type")}
+                >
+                  <option value="percent">Percentage (% of Branch Store Commission)</option>
+                  <option value="fixed">Fixed Flat (₹ per branch order)</option>
+                </select>
+                <div className="form-text small text-muted">
+                  How developer cut is calculated from branch store commission.
+                </div>
+              </div>
+
+              <div className="col-12 col-md-4">
+                <label className="form-label fw-semibold small text-dark d-flex align-items-center gap-2">
+                  <Percent size={14} />
+                  Developer Commission Value ({watch("developer_commission_type") === "fixed" ? "₹" : "%"})
+                </label>
+                <input
+                  type="number"
+                  step="any"
+                  min="0"
+                  placeholder={watch("developer_commission_type") === "fixed" ? "e.g. 5" : "e.g. 25"}
+                  className="form-control"
+                  {...register("developer_commission_value")}
+                />
+                <div className="form-text small text-muted">
+                  {watch("developer_commission_type") === "fixed"
+                    ? "Fixed ₹ deducted from collected store commission per branch order."
+                    : "% cut from collected store commission (e.g. 25% of ₹20 = ₹5)."}
+                </div>
+              </div>
             </div>
           </div>
 

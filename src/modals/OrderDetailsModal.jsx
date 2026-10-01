@@ -25,6 +25,7 @@ import {
   Clock3,
   ChefHat,
   Package,
+  Code,
 } from "lucide-react";
 import Button from "../components/ui/Button";
 import { WhatsAppIcon, openWhatsAppOrderShare } from "../utils/whatsappOrder";
@@ -38,6 +39,8 @@ const OrderDetailsModal = ({
 }) => {
   const [isDownloading, setIsDownloading] = useState(false);
   const accessToken = useSelector((state) => state.auth?.accessToken);
+  const user = useSelector((state) => state.auth?.user);
+  const isAdmin = user?.role === "admin";
 
   const handleDownloadInvoice = async () => {
     if (!order?.id) return;
@@ -150,6 +153,39 @@ const OrderDetailsModal = ({
     p.grand_total ?? order.total_amount ?? 0
   ) + Number.EPSILON) * 100) / 100;
 
+  const isForwardedToBranch = Boolean(order.is_forwarded_to_store);
+  const isBranchOrder = Boolean(order.store_id) && order.store_name !== "Main Bakery" && isForwardedToBranch;
+
+  const storeGrossAmount = isBranchOrder
+    ? Math.round((Number(
+        order.store_gross_amount ?? p.store_gross_amount ?? ((discountedSubtotal || subtotal) + deliveryFee + packagingFee)
+      ) + Number.EPSILON) * 100) / 100
+    : 0;
+
+  const adminCommissionAmount = isBranchOrder
+    ? Math.round((Number(
+        order.admin_commission_amount ?? p.admin_commission_amount ?? 0
+      ) + Number.EPSILON) * 100) / 100
+    : 0;
+
+  const storePayableAmount = isBranchOrder
+    ? Math.round((Number(
+        order.store_payable_amount ?? p.store_payable_amount ?? Math.max(0, storeGrossAmount - adminCommissionAmount)
+      ) + Number.EPSILON) * 100) / 100
+    : 0;
+
+  // Developer Royalty & Platform Fee (Admin Only)
+  const developerPlatformFee = Number(platformFee || 0);
+  const developerCommissionShare = Number(
+    order.developer_commission_share ?? p.developer_commission_share ?? (isBranchOrder ? Math.round(adminCommissionAmount * 0.25) : 0)
+  );
+  const developerTotalEarnings = Number(
+    order.developer_total_earnings ?? order.developer_commission_amount ?? p.developer_total_earnings ?? Math.round(developerPlatformFee + developerCommissionShare)
+  );
+  const adminNetCommission = Number(
+    order.admin_net_commission ?? order.admin_net_commission_amount ?? p.admin_net_commission ?? Math.max(0, adminCommissionAmount - developerCommissionShare)
+  );
+
   const freeDeliveryThreshold = Number(
     p.free_delivery_threshold ?? 0
   );
@@ -179,8 +215,9 @@ const OrderDetailsModal = ({
 
   const isFreeDelivery = Boolean(p.is_free_delivery);
   const isOutOfRange = Boolean(p.is_out_of_range);
-  const isBelowMinimum = Boolean(p.is_below_minimum_order);
-  const isCod = Boolean(p.is_cod);
+  const isCod = Boolean(p.is_cod) ||
+    String(order.payment_method || "").toLowerCase().includes("cash") ||
+    String(order.payment_method || "").toLowerCase().includes("cod");
 
   const offer = p.applied_offer;
   const offerEvaluation = p.offer_evaluation;
@@ -824,14 +861,138 @@ const OrderDetailsModal = ({
 
                 <hr />
 
-                <div className="d-flex justify-content-between fw-bold fs-5">
+                <div 
+                className="d-flex justify-content-between align-items-center p-2 rounded-2 mt-2"
+
+                  style={{
+                    background: isCod ? "#fffbeb" : "#ecfdf5",
+                    border: isCod ? "1px solid #fde68a" : "1px solid #a7f3d0",
+                  }}>
                   <span>Final Order Total</span>
-                  <span>{money(grandTotal)}</span>
+                  <span className="fw-bold fs-5" style={{ color: isCod ? "#b45309" : "#047857" }}>{money(grandTotal)}</span>
                 </div>
 
               </div>
 
             </OrderSection>
+
+            {/* ================= STORE SETTLEMENT & COMMISSION (BRANCH STORES ONLY) ================= */}
+            {isBranchOrder ? (
+              <OrderSection
+                icon={<Banknote size={15} />}
+                title="Store Settlement & Admin Commission"
+              >
+                <div className="border rounded-3 p-3 bg-light">
+                  <div className="d-flex align-items-center justify-content-between mb-3 pb-2 border-bottom">
+                    <span className="small text-muted fw-semibold">Assigned Branch:</span>
+                    <span className="badge bg-white text-dark border px-2 py-1">
+                      {order.store_name || order.store?.name || (order.store_id ? `Store #${order.store_id}` : "Main Bakery")}
+                    </span>
+                  </div>
+
+                  <PriceRow
+                    label="Product Subtotal (Items)"
+                    value={money(discountedSubtotal || subtotal)}
+                  />
+
+                  <PriceRow
+                    label="Delivery Fee Share"
+                    value={deliveryFee === 0 ? "₹0.00 (Free)" : money(deliveryFee)}
+                  />
+
+                  <PriceRow
+                    label="Packaging Fee Share"
+                    value={packagingFee === 0 ? "₹0.00" : money(packagingFee)}
+                  />
+
+                  <div className="d-flex justify-content-between small fw-bold text-dark pt-2 pb-1 border-top mt-2">
+                    <span>Store Gross Share</span>
+                    <span>{money(storeGrossAmount)}</span>
+                  </div>
+
+                  <div className="d-flex justify-content-between small fw-bold text-danger pb-2">
+                    <span>Admin Commission (Deducted)</span>
+                    <span>- {money(adminCommissionAmount)}</span>
+                  </div>
+
+                  <div
+                    className="d-flex justify-content-between align-items-center p-2 rounded-2 mt-2"
+                    style={{
+                      background: isCod ? "#fffbeb" : "#ecfdf5",
+                      border: isCod ? "1px solid #fde68a" : "1px solid #a7f3d0",
+                    }}
+                  >
+                    <div>
+                      <div className="fw-bold" style={{ color: isCod ? "#92400e" : "#065f46", fontSize: "13px" }}>
+                        {isCod ? "Cash Collected by Store (COD)" : "Net Payable to Store (Admin Payout)"}
+                      </div>
+                      <div className="text-muted" style={{ fontSize: "10.5px" }}>
+                        {isCod
+                          ? `Store keeps customer cash; Admin commission (-${money(adminCommissionAmount)}) will be deducted from online payout.`
+                          : "Customer paid online to Admin; Admin will transfer this net amount to Store."}
+                      </div>
+                    </div>
+                    <span >
+                      {money(storePayableAmount)}
+                    </span>
+                  </div>
+
+                  <div className="small text-muted mt-2 fst-italic" style={{ fontSize: "10.5px" }}>
+                    * Note: Platform fee ({money(platformFee)}), COD fee ({money(codFee)}), and GST ({money(taxAmount)}) are retained by Admin.
+                  </div>
+                </div>
+              </OrderSection>
+            ) : null}
+
+            {/* ================= DEVELOPER TECH ROYALTY (ADMIN ONLY - CONFIDENTIAL) ================= */}
+            {isAdmin && (
+              <OrderSection
+                icon={<Code size={15} />}
+                title="Developer Tech Royalty (Confidential - Admin Only)"
+              >
+                <div className="border rounded-3 p-3" style={{ background: "#f8fafc", borderColor: "#cbd5e1" }}>
+                  <div className="d-flex align-items-center justify-content-between mb-3 pb-2 border-bottom">
+                    <span className="small text-muted fw-semibold">Zero-Upfront Model:</span>
+                    <span className="badge bg-primary-subtle text-primary border border-primary-subtle px-2 py-1">
+                      100% Platform Fee + Comm Cut
+                    </span>
+                  </div>
+
+                  <PriceRow
+                    label="Customer Platform Fee (100% Developer)"
+                    value={money(developerPlatformFee)}
+                  />
+
+                  {isBranchOrder ? (
+                    <PriceRow
+                      label="Store Commission Cut (Developer Share)"
+                      value={money(developerCommissionShare)}
+                    />
+                  ) : (
+                    <PriceRow
+                      label="Main Bakery Order"
+                      value="0% Comm (0₹ Share)"
+                    />
+                  )}
+
+                  <div className="d-flex justify-content-between small fw-bold text-primary pt-2 pb-1 border-top mt-2">
+                    <span>Total Developer Earning on Order</span>
+                    <span>{money(developerTotalEarnings)}</span>
+                  </div>
+
+                  {isBranchOrder && (
+                    <div className="d-flex justify-content-between small fw-bold text-success pt-1">
+                      <span>Admin Net Retained Profit</span>
+                      <span>{money(adminNetCommission)}</span>
+                    </div>
+                  )}
+
+                  <div className="small text-muted mt-2 fst-italic" style={{ fontSize: "10.5px" }}>
+                    * Confidential: Visible only to Admin accounts. Store owners and customers cannot see this.
+                  </div>
+                </div>
+              </OrderSection>
+            )}
 
 
             {/* ================= APPLIED OFFER ================= */}

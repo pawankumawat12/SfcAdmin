@@ -18,6 +18,10 @@ import {
   Truck,
   ChevronRight,
   Store,
+  Banknote,
+  Code,
+  Calculator,
+  X,
 } from "lucide-react";
 import { toAssetUrl } from "../../utils/assetUrl";
 import { useGetDashboardOverviewQuery } from "../../services/dashboardApi";
@@ -42,6 +46,7 @@ export default function Dashboard() {
   const [timeframe, setTimeframe] = useState("weekly");
   const [activeChartMetric, setActiveChartMetric] = useState("revenue");
   const [hoveredPoint, setHoveredPoint] = useState(null);
+  const [showDevCalcModal, setShowDevCalcModal] = useState(false);
 
   const {
     data: dashboardData,
@@ -85,6 +90,26 @@ export default function Dashboard() {
     cancelledOrders: 0,
     totalCustomers: 0,
     totalProducts: 0,
+    storeNetPayable: 0,
+    storeCommission: 0,
+    onlineStorePayable: 0,
+    codTotalAmount: 0,
+    codCommission: 0,
+    netStorePayout: 0,
+    todayStoreEarnings: 0,
+    mainBakeryRevenue: 0,
+    mainBakeryOrders: 0,
+    mainBakeryTodaySales: 0,
+    branchStoresRevenue: 0,
+    branchStoresOrders: 0,
+    branchStoresTodaySales: 0,
+    totalAdminCommission: 0,
+    totalStorePayable: 0,
+    totalPlatformFee: 0,
+    todayPlatformFee: 0,
+    developerCommissionCut: 0,
+    developerTotalPayout: 0,
+    adminNetRetainedCommission: 0,
   };
 
   const trends = useMemo(() => overview.trends || [], [overview.trends]);
@@ -341,11 +366,18 @@ export default function Dashboard() {
     },
     {
       key: "totalAmount",
-      label: "Amount",
-      render: (val) => (
-        <span style={{ fontWeight: 800, color: "#111827" }}>
-          ₹{formatRupee(val)}
-        </span>
+      label: isStoreOwner ? "Net Payable" : "Amount",
+      render: (val, ord) => (
+        <div>
+          <span style={{ fontWeight: 800, color: "#111827" }}>
+            ₹{formatRupee(isStoreOwner && ord.storePayableAmount != null ? ord.storePayableAmount : val)}
+          </span>
+          {isStoreOwner && Number(ord.adminCommissionAmount || 0) > 0 && (
+            <div style={{ fontSize: "10px", color: "#7e22ce", fontWeight: 600 }}>
+              Comm: -₹{formatRupee(ord.adminCommissionAmount)}
+            </div>
+          )}
+        </div>
       ),
     },
     {
@@ -627,7 +659,382 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* 2. DYNAMIC KPI CARDS GRID (7 CARDS) */}
+      {/* STORE SETTLEMENT & PAYOUT OVERVIEW (FOR STORE OWNERS) */}
+      {isStoreOwner && (
+        <div
+          style={{
+            background:
+              (kpis.netStorePayout ?? 0) >= 0
+                ? "linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%)"
+                : "linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%)",
+            border:
+              (kpis.netStorePayout ?? 0) >= 0
+                ? "1px solid #a7f3d0"
+                : "1px solid #fde68a",
+            borderRadius: "16px",
+            padding: "20px 24px",
+            marginBottom: "20px",
+            boxShadow: "0 2px 4px rgba(0,0,0,0.04)",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: "16px",
+            }}
+          >
+            <div>
+              <div
+                style={{
+                  fontSize: "11px",
+                  fontWeight: 800,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.5px",
+                  color: (kpis.netStorePayout ?? 0) >= 0 ? "#065f46" : "#92400e",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "6px",
+                }}
+              >
+                <Banknote size={15} />
+                {(kpis.netStorePayout ?? 0) >= 0
+                  ? "Net Settlement Payout (Admin to Store)"
+                  : "Store Due to Admin (COD Commission Offset)"}
+              </div>
+              <div
+                style={{
+                  fontSize: "30px",
+                  fontWeight: 900,
+                  color: (kpis.netStorePayout ?? 0) >= 0 ? "#047857" : "#b45309",
+                  marginTop: "2px",
+                }}
+              >
+                ₹{formatRupee(Math.abs(kpis.netStorePayout || 0))}
+              </div>
+              <div style={{ fontSize: "12px", color: "#475569", marginTop: "4px" }}>
+                {(kpis.netStorePayout ?? 0) >= 0 ? (
+                  <span>
+                    Admin will transfer{" "}
+                    <strong style={{ color: "#047857" }}>
+                      ₹{formatRupee(kpis.netStorePayout || 0)}
+                    </strong>{" "}
+                    to Store (Online Share ₹{formatRupee(kpis.onlineStorePayable || 0)} − COD Admin Comm ₹{formatRupee(kpis.codCommission || 0)})
+                  </span>
+                ) : (
+                  <span>
+                    Store collected more COD commission cash (₹{formatRupee(kpis.codCommission || 0)}) than online earnings (₹{formatRupee(kpis.onlineStorePayable || 0)}). Store owes ₹{formatRupee(Math.abs(kpis.netStorePayout || 0))}.
+                  </span>
+                )}
+              </div>
+            </div>
+
+            <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+              {/* Online Share */}
+              <div
+                style={{
+                  background: "#ffffff",
+                  border: "1px solid #bfdbfe",
+                  borderRadius: "12px",
+                  padding: "10px 14px",
+                  minWidth: "160px",
+                }}
+              >
+                <div style={{ fontSize: "11px", fontWeight: 700, color: "#1d4ed8", textTransform: "uppercase" }}>
+                  Online Orders Share
+                </div>
+                <div style={{ fontSize: "16px", fontWeight: 800, color: "#0f172a", marginTop: "2px" }}>
+                  ₹{formatRupee(kpis.onlineStorePayable || 0)}
+                </div>
+                <div style={{ fontSize: "10.5px", color: "#64748b" }}>
+                  Directly payable by Admin
+                </div>
+              </div>
+
+              {/* COD Cash in Hand */}
+              <div
+                style={{
+                  background: "#ffffff",
+                  border: "1px solid #fde68a",
+                  borderRadius: "12px",
+                  padding: "10px 14px",
+                  minWidth: "160px",
+                }}
+              >
+                <div style={{ fontSize: "11px", fontWeight: 700, color: "#b45309", textTransform: "uppercase" }}>
+                  COD Cash in Hand
+                </div>
+                <div style={{ fontSize: "16px", fontWeight: 800, color: "#b45309", marginTop: "2px" }}>
+                  ₹{formatRupee(kpis.codTotalAmount || 0)}
+                </div>
+                <div style={{ fontSize: "10.5px", color: "#64748b" }}>
+                  Admin Comm: -₹{formatRupee(kpis.codCommission || 0)}
+                </div>
+              </div>
+
+              {/* Total Deducted Commission */}
+              <div
+                style={{
+                  background: "#ffffff",
+                  border: "1px solid #e9d5ff",
+                  borderRadius: "12px",
+                  padding: "10px 14px",
+                  minWidth: "160px",
+                }}
+              >
+                <div style={{ fontSize: "11px", fontWeight: 700, color: "#7e22ce", textTransform: "uppercase" }}>
+                  Admin Commission
+                </div>
+                <div style={{ fontSize: "16px", fontWeight: 800, color: "#7e22ce", marginTop: "2px" }}>
+                  -₹{formatRupee(kpis.storeCommission || 0)}
+                </div>
+                <div style={{ fontSize: "10.5px", color: "#64748b" }}>
+                  Total platform deduction
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ADMIN REVENUE CHANNELS BREAKDOWN */}
+      {!isStoreOwner && (
+        <div
+          style={{
+            background: "linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)",
+            border: "1px solid #e2e8f0",
+            borderRadius: "16px",
+            padding: "18px 22px",
+            boxShadow: "0 1px 3px rgba(0,0,0,0.03)",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              flexWrap: "wrap",
+              gap: "12px",
+              marginBottom: "14px",
+            }}
+          >
+            <div>
+              <span
+                style={{
+                  fontSize: "11px",
+                  fontWeight: 800,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.5px",
+                  color: "#475569",
+                }}
+              >
+                Revenue Channels Breakdown
+              </span>
+              <h3 style={{ margin: "2px 0 0", fontSize: "17px", fontWeight: 800, color: "#0f172a" }}>
+                Main Bakery vs Branch Outlets
+              </h3>
+            </div>
+            <div style={{ fontSize: "12px", color: "#64748b" }}>
+              Total Realized Sales: <strong style={{ color: "#0f172a" }}>₹{formatRupee(kpis.totalRevenue)}</strong>
+            </div>
+          </div>
+
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+              gap: "12px",
+            }}
+          >
+            {/* 1. Main Bakery (Direct) */}
+            <div
+              style={{
+                background: "#ffffff",
+                border: "1px solid #bbf7d0",
+                borderRadius: "12px",
+                padding: "14px 16px",
+                display: "flex",
+                flexDirection: "column",
+                justifyContent: "space-between",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <span style={{ fontSize: "11px", fontWeight: 800, color: "#166534", textTransform: "uppercase" }}>
+                  Main Bakery (Direct)
+                </span>
+                <span
+                  style={{
+                    background: "#f0fdf4",
+                    color: "#16a34a",
+                    padding: "2px 7px",
+                    borderRadius: "6px",
+                    fontSize: "10.5px",
+                    fontWeight: 700,
+                  }}
+                >
+                  0% Comm (100% Retained)
+                </span>
+              </div>
+              <div style={{ marginTop: "10px" }}>
+                <div style={{ fontSize: "24px", fontWeight: 900, color: "#15803d" }}>
+                  ₹{formatRupee(kpis.mainBakeryRevenue || 0)}
+                </div>
+                <div style={{ fontSize: "11.5px", color: "#64748b", marginTop: "3px" }}>
+                  {kpis.mainBakeryOrders || 0} direct order(s) | Today: ₹{formatRupee(kpis.mainBakeryTodaySales || 0)}
+                </div>
+              </div>
+            </div>
+
+            {/* 2. Branch Stores (Volume) */}
+            <div
+              style={{
+                background: "#ffffff",
+                border: "1px solid #bfdbfe",
+                borderRadius: "12px",
+                padding: "14px 16px",
+                display: "flex",
+                flexDirection: "column",
+                justifyContent: "space-between",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <span style={{ fontSize: "11px", fontWeight: 800, color: "#1e40af", textTransform: "uppercase" }}>
+                  Branch Stores Sales
+                </span>
+                <span
+                  style={{
+                    background: "#eff6ff",
+                    color: "#2563eb",
+                    padding: "2px 7px",
+                    borderRadius: "6px",
+                    fontSize: "10.5px",
+                    fontWeight: 700,
+                  }}
+                >
+                  Franchise Branches
+                </span>
+              </div>
+              <div style={{ marginTop: "10px" }}>
+                <div style={{ fontSize: "24px", fontWeight: 900, color: "#1d4ed8" }}>
+                  ₹{formatRupee(kpis.branchStoresRevenue || 0)}
+                </div>
+                <div style={{ fontSize: "11.5px", color: "#64748b", marginTop: "3px" }}>
+                  {kpis.branchStoresOrders || 0} order(s) | Net Payable: ₹{formatRupee(kpis.totalStorePayable || 0)}
+                </div>
+              </div>
+            </div>
+
+            {/* 3. Admin Commission Earned */}
+            <div
+              style={{
+                background: "#ffffff",
+                border: "1px solid #e9d5ff",
+                borderRadius: "12px",
+                padding: "14px 16px",
+                display: "flex",
+                flexDirection: "column",
+                justifyContent: "space-between",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <span style={{ fontSize: "11px", fontWeight: 800, color: "#7e22ce", textTransform: "uppercase" }}>
+                  Admin Platform Commission
+                </span>
+                <span
+                  style={{
+                    background: "#faf5ff",
+                    color: "#9333ea",
+                    padding: "2px 7px",
+                    borderRadius: "6px",
+                    fontSize: "10.5px",
+                    fontWeight: 700,
+                  }}
+                >
+                  Platform Revenue
+                </span>
+              </div>
+              <div style={{ marginTop: "10px" }}>
+                <div style={{ fontSize: "24px", fontWeight: 900, color: "#7e22ce" }}>
+                  ₹{formatRupee(kpis.totalAdminCommission || 0)}
+                </div>
+                <div style={{ fontSize: "11.5px", color: "#64748b", marginTop: "3px" }}>
+                  Net Retained: <strong>₹{formatRupee(kpis.adminNetRetainedCommission || 0)}</strong> (Dev cut: -₹{formatRupee(kpis.developerCommissionCut || 0)})
+                </div>
+              </div>
+            </div>
+
+            {/* 4. Developer Tech Royalty (Admin Only - Confidential) */}
+            <div
+              style={{
+                background: "#ffffff",
+                border: "1px solid #bfdbfe",
+                borderRadius: "12px",
+                padding: "14px 16px",
+                display: "flex",
+                flexDirection: "column",
+                justifyContent: "space-between",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <span style={{ fontSize: "11px", fontWeight: 800, color: "#1d4ed8", textTransform: "uppercase" }}>
+                  Developer Tech Royalty
+                </span>
+                <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                  <button
+                    type="button"
+                    onClick={() => setShowDevCalcModal(true)}
+                    style={{
+                      background: "#2563eb",
+                      color: "#ffffff",
+                      border: "none",
+                      padding: "2px 8px",
+                      borderRadius: "6px",
+                      fontSize: "10.5px",
+                      fontWeight: 700,
+                      cursor: "pointer",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "4px",
+                      boxShadow: "0 1px 2px rgba(37, 99, 235, 0.2)",
+                      transition: "background 0.2s",
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = "#1d4ed8")}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = "#2563eb")}
+                    title="Click to view complete calculation breakdown"
+                  >
+                    <Calculator size={11} />
+                    <span>Show</span>
+                  </button>
+                  <span
+                    style={{
+                      background: "#eff6ff",
+                      color: "#2563eb",
+                      padding: "2px 7px",
+                      borderRadius: "6px",
+                      fontSize: "10.5px",
+                      fontWeight: 700,
+                    }}
+                  >
+                    Admin Only
+                  </span>
+                </div>
+              </div>
+              <div style={{ marginTop: "10px" }}>
+                <div style={{ fontSize: "24px", fontWeight: 900, color: "#1d4ed8" }}>
+                  ₹{formatRupee(kpis.developerTotalPayout || 0)}
+                </div>
+                <div style={{ fontSize: "11.5px", color: "#64748b", marginTop: "3px" }}>
+                  Platform Fee: ₹{formatRupee(kpis.totalPlatformFee || 0)} + Comm Share: ₹{formatRupee(kpis.developerCommissionCut || 0)}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 2. DYNAMIC KPI CARDS GRID */}
       <div
         className="dashboard-kpis-grid"
         style={{
@@ -635,7 +1042,7 @@ export default function Dashboard() {
           gap: "16px",
         }}
       >
-        {/* Total Revenue */}
+        {/* Total Revenue / Store Net Earnings */}
         <article
           style={{
             background: "#ffffff",
@@ -649,7 +1056,9 @@ export default function Dashboard() {
           }}
         >
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-            <span style={{ fontSize: "12px", fontWeight: 700, color: "#6b7280" }}>Total Revenue</span>
+            <span style={{ fontSize: "12px", fontWeight: 700, color: "#6b7280" }}>
+              {isStoreOwner ? "Store Net Earnings" : "Total Revenue"}
+            </span>
             <div
               style={{
                 width: "34px",
@@ -666,15 +1075,21 @@ export default function Dashboard() {
           </div>
           <div style={{ marginTop: "12px" }}>
             <strong style={{ fontSize: "24px", fontWeight: 900, color: "#111827" }}>
-              ₹{formatRupee(kpis.totalRevenue)}
+              ₹{formatRupee(isStoreOwner ? (kpis.storeNetPayable || 0) : kpis.totalRevenue)}
             </strong>
           </div>
           <div style={{ marginTop: "8px", fontSize: "11.5px", color: "#6b7280" }}>
-            Avg. ₹{formatRupee(avgOrderValue)} per order
+            {isStoreOwner ? (
+              <span>Customer Vol: ₹{formatRupee(kpis.totalRevenue)} | Comm: -₹{formatRupee(kpis.storeCommission || 0)}</span>
+            ) : (
+              <span>
+                Main Bakery: ₹{formatRupee(kpis.mainBakeryRevenue || 0)} | Branches: ₹{formatRupee(kpis.branchStoresRevenue || 0)}
+              </span>
+            )}
           </div>
         </article>
 
-        {/* Today's Sales */}
+        {/* Today's Sales / Today's Net Earnings */}
         <article
           style={{
             background: "#ffffff",
@@ -688,7 +1103,9 @@ export default function Dashboard() {
           }}
         >
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-            <span style={{ fontSize: "12px", fontWeight: 700, color: "#6b7280" }}>Today's Sales</span>
+            <span style={{ fontSize: "12px", fontWeight: 700, color: "#6b7280" }}>
+              {isStoreOwner ? "Today's Net Earnings" : "Today's Sales"}
+            </span>
             <div
               style={{
                 width: "34px",
@@ -705,7 +1122,7 @@ export default function Dashboard() {
           </div>
           <div style={{ marginTop: "12px" }}>
             <strong style={{ fontSize: "24px", fontWeight: 900, color: "#111827" }}>
-              ₹{formatRupee(kpis.todaySales)}
+              ₹{formatRupee(isStoreOwner ? (kpis.todayStoreEarnings || 0) : kpis.todaySales)}
             </strong>
           </div>
           <div style={{ marginTop: "8px", fontSize: "11.5px", color: "#2563eb", fontWeight: 700 }}>
@@ -898,6 +1315,202 @@ export default function Dashboard() {
             Active on catalog
           </div>
         </article>
+
+        {/* Admin Commission (Only for Store Owners) */}
+        {isStoreOwner && (
+          <article
+            style={{
+              background: "#ffffff",
+              padding: "18px 20px",
+              borderRadius: "16px",
+              border: "1px solid #e9d5ff",
+              boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
+              display: "flex",
+              flexDirection: "column",
+              justifyContent: "space-between",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <span style={{ fontSize: "12px", fontWeight: 700, color: "#7e22ce" }}>Admin Commission</span>
+              <div
+                style={{
+                  width: "34px",
+                  height: "34px",
+                  borderRadius: "10px",
+                  background: "#faf5ff",
+                  color: "#9333ea",
+                  display: "grid",
+                  placeItems: "center",
+                }}
+              >
+                <Banknote size={18} />
+              </div>
+            </div>
+            <div style={{ marginTop: "12px" }}>
+              <strong style={{ fontSize: "24px", fontWeight: 900, color: "#7e22ce" }}>
+                ₹{formatRupee(kpis.storeCommission || 0)}
+              </strong>
+            </div>
+            <div style={{ marginTop: "8px", fontSize: "11.5px", color: "#6b7280" }}>
+              Total platform fee deducted
+            </div>
+          </article>
+        )}
+
+        {/* Main Bakery Sales (Only for Admin) */}
+        {!isStoreOwner && (
+          <article
+            style={{
+              background: "#ffffff",
+              padding: "18px 20px",
+              borderRadius: "16px",
+              border: "1px solid #bbf7d0",
+              boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
+              display: "flex",
+              flexDirection: "column",
+              justifyContent: "space-between",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <span style={{ fontSize: "12px", fontWeight: 700, color: "#166534" }}>Main Bakery Sales</span>
+              <div
+                style={{
+                  width: "34px",
+                  height: "34px",
+                  borderRadius: "10px",
+                  background: "#f0fdf4",
+                  color: "#16a34a",
+                  display: "grid",
+                  placeItems: "center",
+                }}
+              >
+                <Store size={18} />
+              </div>
+            </div>
+            <div style={{ marginTop: "12px" }}>
+              <strong style={{ fontSize: "24px", fontWeight: 900, color: "#15803d" }}>
+                ₹{formatRupee(kpis.mainBakeryRevenue || 0)}
+              </strong>
+            </div>
+            <div style={{ marginTop: "8px", fontSize: "11.5px", color: "#166534", fontWeight: 600 }}>
+              {kpis.mainBakeryOrders || 0} direct order(s) (100% retained)
+            </div>
+          </article>
+        )}
+
+        {/* Admin Commission Earned (Only for Admin) */}
+        {!isStoreOwner && (
+          <article
+            style={{
+              background: "#ffffff",
+              padding: "18px 20px",
+              borderRadius: "16px",
+              border: "1px solid #e9d5ff",
+              boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
+              display: "flex",
+              flexDirection: "column",
+              justifyContent: "space-between",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <span style={{ fontSize: "12px", fontWeight: 700, color: "#7e22ce" }}>Admin Commission</span>
+              <div
+                style={{
+                  width: "34px",
+                  height: "34px",
+                  borderRadius: "10px",
+                  background: "#faf5ff",
+                  color: "#9333ea",
+                  display: "grid",
+                  placeItems: "center",
+                }}
+              >
+                <Banknote size={18} />
+              </div>
+            </div>
+            <div style={{ marginTop: "12px" }}>
+              <strong style={{ fontSize: "24px", fontWeight: 900, color: "#7e22ce" }}>
+                ₹{formatRupee(kpis.totalAdminCommission || 0)}
+              </strong>
+            </div>
+            <div style={{ marginTop: "8px", fontSize: "11.5px", color: "#7e22ce", fontWeight: 600 }}>
+              Earned from {kpis.branchStoresOrders || 0} branch order(s)
+            </div>
+          </article>
+        )}
+
+        {/* Developer Tech Payout (Only for Admin - Confidential) */}
+        {!isStoreOwner && (
+          <article
+            style={{
+              background: "#ffffff",
+              padding: "18px 20px",
+              borderRadius: "16px",
+              border: "1px solid #bfdbfe",
+              boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
+              display: "flex",
+              flexDirection: "column",
+              justifyContent: "space-between",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <span style={{ fontSize: "12px", fontWeight: 700, color: "#1e40af" }}>Developer Tech Fee</span>
+                <button
+                  type="button"
+                  onClick={() => setShowDevCalcModal(true)}
+                  style={{
+                    background: "#eff6ff",
+                    color: "#2563eb",
+                    border: "1px solid #bfdbfe",
+                    padding: "2px 8px",
+                    borderRadius: "6px",
+                    fontSize: "10.5px",
+                    fontWeight: 700,
+                    cursor: "pointer",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "4px",
+                    transition: "all 0.2s",
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = "#2563eb";
+                    e.currentTarget.style.color = "#ffffff";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = "#eff6ff";
+                    e.currentTarget.style.color = "#2563eb";
+                  }}
+                  title="View detailed calculation"
+                >
+                  <Calculator size={11} />
+                  <span>Show</span>
+                </button>
+              </div>
+              <div
+                style={{
+                  width: "34px",
+                  height: "34px",
+                  borderRadius: "10px",
+                  background: "#eff6ff",
+                  color: "#2563eb",
+                  display: "grid",
+                  placeItems: "center",
+                }}
+              >
+                <Code size={18} />
+              </div>
+            </div>
+            <div style={{ marginTop: "12px" }}>
+              <strong style={{ fontSize: "24px", fontWeight: 900, color: "#1d4ed8" }}>
+                ₹{formatRupee(kpis.developerTotalPayout || 0)}
+              </strong>
+            </div>
+            <div style={{ marginTop: "8px", fontSize: "11.5px", color: "#1e40af", fontWeight: 600 }}>
+              Platform Fee + Comm Cut
+            </div>
+          </article>
+        )}
       </div>
 
       {/* 3. INTERACTIVE CHARTS SECTION (2 COLUMNS) */}
@@ -1768,6 +2381,242 @@ export default function Dashboard() {
           )}
         </div>
       </div>
+
+      {/* DEVELOPER TECH ROYALTY CALCULATION BREAKDOWN MODAL (ADMIN ONLY) */}
+      {showDevCalcModal && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 9999,
+            backgroundColor: "rgba(15, 23, 42, 0.65)",
+            backdropFilter: "blur(4px)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "16px",
+          }}
+          onClick={() => setShowDevCalcModal(false)}
+        >
+          <div
+            style={{
+              background: "#ffffff",
+              borderRadius: "20px",
+              maxWidth: "580px",
+              width: "100%",
+              boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.25)",
+              overflow: "hidden",
+              border: "1px solid #e2e8f0",
+              animation: "fadeIn 0.15s ease-out",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div
+              style={{
+                padding: "18px 24px",
+                borderBottom: "1px solid #f1f5f9",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                background: "linear-gradient(to right, #f8fafc, #f1f5f9)",
+              }}
+            >
+              <div>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  <div
+                    style={{
+                      width: "32px",
+                      height: "32px",
+                      borderRadius: "8px",
+                      background: "#eff6ff",
+                      color: "#2563eb",
+                      display: "grid",
+                      placeItems: "center",
+                    }}
+                  >
+                    <Calculator size={18} />
+                  </div>
+                  <h3 style={{ margin: 0, fontSize: "16px", fontWeight: 800, color: "#1e293b" }}>
+                    Developer Tech Royalty Calculation
+                  </h3>
+                </div>
+                <p style={{ margin: "4px 0 0 40px", fontSize: "12px", color: "#64748b" }}>
+                  Live transparent settlement breakdown & formula
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowDevCalcModal(false)}
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  color: "#94a3b8",
+                  cursor: "pointer",
+                  padding: "6px",
+                  borderRadius: "8px",
+                  display: "grid",
+                  placeItems: "center",
+                }}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div style={{ padding: "20px 24px", maxHeight: "75vh", overflowY: "auto" }}>
+              {/* Grand Total Highlight */}
+              <div
+                style={{
+                  background: "linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)",
+                  border: "1px solid #bfdbfe",
+                  borderRadius: "14px",
+                  padding: "16px 20px",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  marginBottom: "20px",
+                }}
+              >
+                <div>
+                  <div style={{ fontSize: "11px", fontWeight: 800, color: "#1e40af", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                    Total Developer Realized Royalty
+                  </div>
+                  <div style={{ fontSize: "28px", fontWeight: 900, color: "#1d4ed8", marginTop: "2px" }}>
+                    ₹{formatRupee(kpis.developerTotalPayout || 0)}
+                  </div>
+                </div>
+                <div style={{ textAlign: "right" }}>
+                  <div style={{ fontSize: "11px", color: "#475569", fontWeight: 600 }}>Active Formula</div>
+                  <div style={{ fontSize: "12.5px", color: "#1e40af", fontWeight: 800, marginTop: "2px" }}>
+                    ₹{formatRupee(kpis.totalPlatformFee || 0)} + ₹{formatRupee(kpis.developerCommissionCut || 0)}
+                  </div>
+                  <div style={{ fontSize: "10.5px", color: "#64748b", marginTop: "1px" }}>
+                    (Platform Fee + Comm Share)
+                  </div>
+                </div>
+              </div>
+
+              {/* Two Stream Cards */}
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "20px" }}>
+                {/* 1. Platform Fee */}
+                <div
+                  style={{
+                    background: "#f8fafc",
+                    border: "1px solid #e2e8f0",
+                    borderRadius: "12px",
+                    padding: "14px",
+                  }}
+                >
+                  <div style={{ fontSize: "11px", fontWeight: 700, color: "#64748b", textTransform: "uppercase" }}>
+                    1. Customer Platform Fee
+                  </div>
+                  <div style={{ fontSize: "20px", fontWeight: 800, color: "#0f172a", marginTop: "4px" }}>
+                    ₹{formatRupee(kpis.totalPlatformFee || 0)}
+                  </div>
+                  <div style={{ fontSize: "11px", color: "#16a34a", fontWeight: 600, marginTop: "4px" }}>
+                    100% credited to Developer
+                  </div>
+                  <div style={{ fontSize: "11px", color: "#94a3b8", marginTop: "4px", lineHeight: "1.4" }}>
+                    Charged directly from customer per order (₹7/order) for software upkeep.
+                  </div>
+                </div>
+
+                {/* 2. Admin Commission Cut */}
+                <div
+                  style={{
+                    background: "#f8fafc",
+                    border: "1px solid #e2e8f0",
+                    borderRadius: "12px",
+                    padding: "14px",
+                  }}
+                >
+                  <div style={{ fontSize: "11px", fontWeight: 700, color: "#64748b", textTransform: "uppercase" }}>
+                    2. Branch Commission Cut
+                  </div>
+                  <div style={{ fontSize: "20px", fontWeight: 800, color: "#0f172a", marginTop: "4px" }}>
+                    ₹{formatRupee(kpis.developerCommissionCut || 0)}
+                  </div>
+                  <div style={{ fontSize: "11px", color: "#7e22ce", fontWeight: 600, marginTop: "4px" }}>
+                    25% cut of Branch Commission
+                  </div>
+                  <div style={{ fontSize: "11px", color: "#94a3b8", marginTop: "4px", lineHeight: "1.4" }}>
+                    Taken only when orders are dispatched to branch stores.
+                  </div>
+                </div>
+              </div>
+
+              {/* Settlement Rules Section */}
+              <div style={{ background: "#ffffff", border: "1px solid #e2e8f0", borderRadius: "12px", padding: "16px" }}>
+                <div style={{ fontSize: "12px", fontWeight: 800, color: "#334155", textTransform: "uppercase", marginBottom: "12px" }}>
+                  Operational Accounting Rules
+                </div>
+                
+                {/* Rule A */}
+                <div style={{ display: "flex", gap: "10px", marginBottom: "14px" }}>
+                  <div style={{ width: "8px", height: "8px", borderRadius: "50%", background: "#16a34a", marginTop: "6px", flexShrink: 0 }} />
+                  <div>
+                    <strong style={{ fontSize: "12.5px", color: "#0f172a" }}>Main Bakery (Direct / Admin Delivered Orders):</strong>
+                    <p style={{ margin: "2px 0 0 0", fontSize: "12px", color: "#64748b", lineHeight: "1.5" }}>
+                      Orders delivered directly by Admin without forwarding to branch: <strong>0% commission is deducted</strong>. Developer only receives the <strong>Platform Fee (₹7/order)</strong>. 100% of food revenue remains with Main Bakery.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Rule B */}
+                <div style={{ display: "flex", gap: "10px", marginBottom: "14px" }}>
+                  <div style={{ width: "8px", height: "8px", borderRadius: "50%", background: "#7e22ce", marginTop: "6px", flexShrink: 0 }} />
+                  <div>
+                    <strong style={{ fontSize: "12.5px", color: "#0f172a" }}>Branch Stores (Franchise Outlets Dispatched Orders):</strong>
+                    <p style={{ margin: "2px 0 0 0", fontSize: "12px", color: "#64748b", lineHeight: "1.5" }}>
+                      Total Branch Commission collected: <strong>₹{formatRupee(kpis.totalAdminCommission || 0)}</strong>.
+                      <br />
+                      • Admin Net Retained (75%): <strong>₹{formatRupee(kpis.adminNetRetainedCommission || 0)}</strong>
+                      <br />
+                      • Developer Royalty (25%): <strong>₹{formatRupee(kpis.developerCommissionCut || 0)}</strong>
+                      <br />
+                      • Store Net Payable: <strong>₹{formatRupee(kpis.totalStorePayable || 0)}</strong>
+                    </p>
+                  </div>
+                </div>
+
+                {/* Agreement Summary Box */}
+        
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div
+              style={{
+                padding: "14px 24px",
+                borderTop: "1px solid #f1f5f9",
+                background: "#f8fafc",
+                display: "flex",
+                justifyContent: "flex-end",
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => setShowDevCalcModal(false)}
+                style={{
+                  background: "#0f172a",
+                  color: "#ffffff",
+                  border: "none",
+                  borderRadius: "8px",
+                  padding: "8px 20px",
+                  fontSize: "13px",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                Close Breakdown
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

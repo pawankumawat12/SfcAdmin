@@ -90,16 +90,61 @@ export default function StoreOrderList() {
   const stats = orderResponse?.stats || {};
 
   const totalOrdersCount = stats.totalOrders ?? pagination?.total ?? orders.length;
-  const fallbackRevenue = orders
-    .filter((o) => {
-      const s = String(o.status || "").toLowerCase();
-      const p = String(o.payment_status || "").toLowerCase();
-      return !["cancelled", "rejected", "payment failed"].includes(s) && !["failed", "refunded"].includes(p);
-    })
-    .reduce((sum, o) => sum + (Number(o.total_amount) || 0), 0);
+  const validOrders = orders.filter((o) => {
+    const s = String(o.status || "").toLowerCase();
+    const p = String(o.payment_status || "").toLowerCase();
+    return !["cancelled", "rejected", "payment failed"].includes(s) && !["failed", "refunded"].includes(p);
+  });
+  const fallbackRevenue = validOrders.reduce((sum, o) => sum + (Number(o.total_amount) || 0), 0);
   const totalRevenueAmount = stats.totalAmount !== undefined ? stats.totalAmount : fallbackRevenue;
   const deliveredCount = stats.deliveredOrders ?? 0;
   const pendingCount = stats.pendingOrders ?? 0;
+
+  const isCodOrder = (o) => {
+    const m = String(o.payment_method || "").toLowerCase();
+    return m.includes("cash") || m.includes("cod");
+  };
+
+  const onlineOrders = validOrders.filter((o) => !isCodOrder(o));
+  const codOrders = validOrders.filter((o) => isCodOrder(o));
+
+  const fallbackOnlinePayable = onlineOrders.reduce((sum, o) => {
+    const payable = o.store_payable_amount !== undefined
+      ? Number(o.store_payable_amount)
+      : Math.max(0, (Number(o.subtotal || 0) + Number(o.delivery_fee || 0) + Number(o.packaging_fee || 0)) - (Number(o.admin_commission_amount) || 0));
+    return sum + payable;
+  }, 0);
+
+  const fallbackOnlineCommission = onlineOrders.reduce((sum, o) => sum + (Number(o.admin_commission_amount) || 0), 0);
+  const fallbackOnlineAmount = onlineOrders.reduce((sum, o) => sum + (Number(o.total_amount) || 0), 0);
+
+  const fallbackCodCommission = codOrders.reduce((sum, o) => sum + (Number(o.admin_commission_amount) || 0), 0);
+  const fallbackCodAmount = codOrders.reduce((sum, o) => sum + (Number(o.total_amount) || 0), 0);
+
+  const fallbackCommission = validOrders.reduce((sum, o) => sum + (Number(o.admin_commission_amount) || 0), 0);
+  const totalCommissionAmount = stats.totalCommission !== undefined ? stats.totalCommission : fallbackCommission;
+
+  const fallbackStorePayable = validOrders.reduce((sum, o) => {
+    const payable = o.store_payable_amount !== undefined
+      ? Number(o.store_payable_amount)
+      : Math.max(0, (Number(o.subtotal || 0) + Number(o.delivery_fee || 0) + Number(o.packaging_fee || 0)) - (Number(o.admin_commission_amount) || 0));
+    return sum + payable;
+  }, 0);
+  const totalStorePayableAmount = stats.totalStorePayable !== undefined ? stats.totalStorePayable : fallbackStorePayable;
+
+  const onlineOrdersCount = stats.onlineOrdersCount ?? onlineOrders.length;
+  const onlineTotalAmount = stats.onlineTotalAmount !== undefined ? stats.onlineTotalAmount : fallbackOnlineAmount;
+  const onlineStorePayable = stats.onlineStorePayable !== undefined ? stats.onlineStorePayable : fallbackOnlinePayable;
+  const onlineCommission = stats.onlineCommission !== undefined ? stats.onlineCommission : fallbackOnlineCommission;
+
+  const codOrdersCount = stats.codOrdersCount ?? codOrders.length;
+  const codTotalAmount = stats.codTotalAmount !== undefined ? stats.codTotalAmount : fallbackCodAmount;
+  const codCommission = stats.codCommission !== undefined ? stats.codCommission : fallbackCodCommission;
+
+  // Net payout from Admin to Store:
+  // Admin collected Online Money -> owes onlineStorePayable to Store
+  // Store collected COD Cash -> owes codCommission to Admin
+  const netStorePayout = stats.netStorePayout !== undefined ? stats.netStorePayout : (onlineStorePayable - codCommission);
 
   // Real-time live updates for branch orders
   useEffect(() => {
@@ -331,11 +376,91 @@ export default function StoreOrderList() {
         </div>
       </div>
 
+      {/* Settlement Payout Highlight Box */}
+      <div
+        className="card mb-3"
+        style={{
+          background: netStorePayout >= 0 ? "linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%)" : "linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%)",
+          border: netStorePayout >= 0 ? "1px solid #a7f3d0" : "1px solid #fde68a",
+          borderRadius: "14px",
+          padding: "16px 20px",
+        }}
+      >
+        <div className="d-flex flex-column flex-lg-row align-items-start align-items-lg-center justify-content-between gap-3">
+          <div>
+            <div style={{ fontSize: "11px", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.5px", color: netStorePayout >= 0 ? "#065f46" : "#92400e" }}>
+              {netStorePayout >= 0 ? "Final Net Payout (Admin to Store)" : "Store Due (Store to Admin)"}
+            </div>
+            <div style={{ fontSize: "28px", fontWeight: 900, color: netStorePayout >= 0 ? "#047857" : "#b45309", marginTop: "2px" }}>
+              ₹{Number(Math.abs(netStorePayout)).toLocaleString("en-IN", { maximumFractionDigits: 2 })}
+            </div>
+            <div style={{ fontSize: "12px", color: "#475569", marginTop: "3px" }}>
+              {netStorePayout >= 0 ? (
+                <span>
+                  Admin will transfer <strong>₹{Number(netStorePayout).toLocaleString("en-IN", { maximumFractionDigits: 2 })}</strong> to Store (Online Share ₹{Number(onlineStorePayable).toLocaleString("en-IN", { maximumFractionDigits: 0 })} minus COD Comm ₹{Number(codCommission).toLocaleString("en-IN", { maximumFractionDigits: 0 })})
+                </span>
+              ) : (
+                <span>
+                  Store collected more cash commission (₹{Number(codCommission).toLocaleString("en-IN", { maximumFractionDigits: 0 })}) than online earnings (₹{Number(onlineStorePayable).toLocaleString("en-IN", { maximumFractionDigits: 0 })}). Store owes ₹{Number(Math.abs(netStorePayout)).toLocaleString("en-IN", { maximumFractionDigits: 2 })}.
+                </span>
+              )}
+            </div>
+          </div>
+
+          {/* Breakdown Pills: Online vs COD */}
+          <div className="d-flex align-items-center gap-2 flex-wrap w-100 w-lg-auto">
+            {/* Online Orders Pill */}
+            <div
+              style={{
+                background: "#ffffff",
+                border: "1px solid #bfdbfe",
+                borderRadius: "10px",
+                padding: "8px 12px",
+                minWidth: "160px",
+                flex: "1 1 auto",
+              }}
+            >
+              <div style={{ fontSize: "10.5px", fontWeight: 700, color: "#1d4ed8", textTransform: "uppercase" }}>
+                Online Orders ({onlineOrdersCount})
+              </div>
+              <div style={{ fontSize: "14px", fontWeight: 800, color: "#0f172a", marginTop: "2px" }}>
+                Payable: ₹{Number(onlineStorePayable).toLocaleString("en-IN", { maximumFractionDigits: 2 })}
+              </div>
+              <div style={{ fontSize: "10px", color: "#64748b" }}>
+                Volume: ₹{Number(onlineTotalAmount).toLocaleString("en-IN", { maximumFractionDigits: 0 })} | Comm: ₹{Number(onlineCommission).toLocaleString("en-IN", { maximumFractionDigits: 0 })}
+              </div>
+            </div>
+
+            {/* COD Orders Pill */}
+            <div
+              style={{
+                background: "#ffffff",
+                border: "1px solid #fde68a",
+                borderRadius: "10px",
+                padding: "8px 12px",
+                minWidth: "160px",
+                flex: "1 1 auto",
+              }}
+            >
+              <div style={{ fontSize: "10.5px", fontWeight: 700, color: "#b45309", textTransform: "uppercase" }}>
+                COD Orders ({codOrdersCount})
+              </div>
+              <div style={{ fontSize: "14px", fontWeight: 800, color: "#b91c1c", marginTop: "2px" }}>
+                Admin Comm: -₹{Number(codCommission).toLocaleString("en-IN", { maximumFractionDigits: 2 })}
+              </div>
+              <div style={{ fontSize: "10px", color: "#64748b" }}>
+                Cash with Store: ₹{Number(codTotalAmount).toLocaleString("en-IN", { maximumFractionDigits: 0 })}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* Metric Cards */}
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))",
+          gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
           gap: "10px",
           marginBottom: "16px",
         }}
@@ -356,22 +481,48 @@ export default function StoreOrderList() {
         {/* Card 2: Total Revenue / Amount */}
         <div className="card" style={{ padding: "12px 14px", borderLeft: "4px solid #4f46e5" }}>
           <span style={{ fontSize: "11px", fontWeight: 700, color: "#4f46e5", textTransform: "uppercase" }}>
-            Store Revenue
+            Order Volume
           </span>
           <div style={{ fontSize: "20px", fontWeight: 800, color: "#111827", marginTop: "2px" }}>
             ₹{Number(totalRevenueAmount).toLocaleString("en-IN", { maximumFractionDigits: 2 })}
           </div>
           <span style={{ fontSize: "10.5px", color: "#6b7280" }}>
-            Total value
+            Total customer bills
           </span>
         </div>
 
-        {/* Card 3: Delivered Orders */}
+        {/* Card 3: Admin Commission */}
+        <div className="card" style={{ padding: "12px 14px", borderLeft: "4px solid #7c3aed" }}>
+          <span style={{ fontSize: "11px", fontWeight: 700, color: "#7c3aed", textTransform: "uppercase" }}>
+            Admin Commission
+          </span>
+          <div style={{ fontSize: "20px", fontWeight: 800, color: "#7c3aed", marginTop: "2px" }}>
+            ₹{Number(totalCommissionAmount).toLocaleString("en-IN", { maximumFractionDigits: 2 })}
+          </div>
+          <span style={{ fontSize: "10.5px", color: "#6b7280" }}>
+            Platform fee kept
+          </span>
+        </div>
+
+        {/* Card 4: Net Payable to Store */}
         <div className="card" style={{ padding: "12px 14px", borderLeft: "4px solid #16a34a" }}>
           <span style={{ fontSize: "11px", fontWeight: 700, color: "#16a34a", textTransform: "uppercase" }}>
-            Delivered
+            Net Store Payable
           </span>
           <div style={{ fontSize: "20px", fontWeight: 800, color: "#16a34a", marginTop: "2px" }}>
+            ₹{Number(totalStorePayableAmount).toLocaleString("en-IN", { maximumFractionDigits: 2 })}
+          </div>
+          <span style={{ fontSize: "10.5px", color: "#6b7280" }}>
+            Payable to store owner
+          </span>
+        </div>
+
+        {/* Card 5: Delivered Orders */}
+        <div className="card" style={{ padding: "12px 14px", borderLeft: "4px solid #10b981" }}>
+          <span style={{ fontSize: "11px", fontWeight: 700, color: "#10b981", textTransform: "uppercase" }}>
+            Delivered
+          </span>
+          <div style={{ fontSize: "20px", fontWeight: 800, color: "#10b981", marginTop: "2px" }}>
             {deliveredCount}
           </div>
           <span style={{ fontSize: "10.5px", color: "#6b7280" }}>
@@ -379,7 +530,7 @@ export default function StoreOrderList() {
           </span>
         </div>
 
-        {/* Card 4: Pending / In Progress */}
+        {/* Card 6: Pending / In Progress */}
         <div className="card" style={{ padding: "12px 14px", borderLeft: "4px solid #d97706" }}>
           <span style={{ fontSize: "11px", fontWeight: 700, color: "#d97706", textTransform: "uppercase" }}>
             In-Progress
@@ -536,6 +687,10 @@ export default function StoreOrderList() {
                           >
                             {order.payment_status || "Pending"}
                           </span>
+                        </div>
+                        <div style={{ fontSize: "11px", fontWeight: 700, marginTop: "2px", color: isCodOrder(order) ? "#b45309" : "#15803d" }}>
+                          {isCodOrder(order) ? "Store Cash: " : "Admin Payout: "}
+                          ₹{Number(order.store_payable_amount !== undefined ? order.store_payable_amount : Math.max(0, (Number(order.subtotal || 0) + Number(order.delivery_fee || 0) + Number(order.packaging_fee || 0)) - (Number(order.admin_commission_amount) || 0))).toLocaleString("en-IN", { maximumFractionDigits: 2 })}
                         </div>
                       </div>
                     </div>
@@ -729,6 +884,46 @@ export default function StoreOrderList() {
                   ₹{Number(total || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 })}
                 </span>
               ),
+            },
+            {
+              key: "store_payable_amount",
+              label: "STORE PAYABLE / SETTLEMENT",
+              sortable: true,
+              render: (_, order) => {
+                const gross = Number(order.store_gross_amount ?? (Number(order.subtotal || 0) + Number(order.delivery_fee || 0) + Number(order.packaging_fee || 0)));
+                const comm = Number(order.admin_commission_amount || 0);
+                const payable = order.store_payable_amount !== undefined
+                  ? Number(order.store_payable_amount)
+                  : Math.max(0, gross - comm);
+                const isCod = isCodOrder(order);
+
+                return (
+                  <div>
+                    <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                      <span style={{ fontWeight: 800, fontSize: "14px", color: isCod ? "#0f172a" : "#15803d" }}>
+                        ₹{payable.toLocaleString("en-IN", { maximumFractionDigits: 2 })}
+                      </span>
+                      <span
+                        style={{
+                          fontSize: "10px",
+                          fontWeight: 700,
+                          padding: "1px 6px",
+                          borderRadius: "4px",
+                          background: isCod ? "#fef3c7" : "#eff6ff",
+                          color: isCod ? "#92400e" : "#1d4ed8",
+                          border: isCod ? "1px solid #fde68a" : "1px solid #bfdbfe",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {isCod ? "Store Cash" : "Admin Payout"}
+                      </span>
+                    </div>
+                    <div style={{ fontSize: "10.5px", color: "#64748b", marginTop: "2px", whiteSpace: "nowrap" }}>
+                      Gross: ₹{gross.toFixed(0)} | Comm: -₹{comm.toFixed(0)}
+                    </div>
+                  </div>
+                );
+              },
             },
             {
               key: "dispatch_status",
