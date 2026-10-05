@@ -32,9 +32,16 @@ import { isValidIndianPhone, sanitizePhoneInput } from "../../utils/phoneValidat
 import DataTable from "../../components/common/DataTable";
 import BulkActionBar from "../../components/common/BulkActionBar";
 import Button from "../../components/ui/Button";
+import { useSelector } from "react-redux";
+import { Navigate } from "react-router-dom";
 import { exportToCsv } from "../../utils/csvExport";
 
 export default function CustomerList() {
+  const user = useSelector((state) => state.auth.user);
+  if (user?.role === "store_owner") {
+    return <Navigate to="/" replace />;
+  }
+
   const [activeTab, setActiveTab] = useState("customers"); // "customers" | "requests"
   const [searchTerm, setSearchTerm] = useState("");
   const [page, setPage] = useState(1);
@@ -501,7 +508,6 @@ export default function CustomerList() {
             borderColor: isBlocked ? "#86efac" : "#fecaca",
             color: isBlocked ? "#166534" : "#dc2626",
           }}
-          onClick={() => handleOpenBlockModal(c)}
         >
           {isBlocked ? (
             <CheckCircle size={15} />

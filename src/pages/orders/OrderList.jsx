@@ -608,7 +608,7 @@ export default function OrderList() {
               setSearch(e.target.value);
               setPage(1);
             }}
-            placeholder="Search by order #, customer..."
+            placeholder={isStoreOwner ? "Search by order #..." : "Search by order #, customer..."}
             style={{ width: "240px" }}
           />
           <Select
@@ -980,32 +980,36 @@ export default function OrderList() {
           },
           {
             key: "customer",
-            label: "CUSTOMER",
+            label: isStoreOwner ? "DELIVERY LOCATION" : "CUSTOMER",
             render: (value, item) => (
               <div style={{ maxWidth: "180px" }}>
-                <div
-                  style={{
-                    fontWeight: 600,
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                  }}
-                  title={value}
-                >
-                  {value}
-                </div>
-                <div
-                  style={{
-                    fontSize: "11px",
-                    color: "var(--color-text-muted)",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                  }}
-                  title={item.customer_phone || item.customer_email}
-                >
-                  {item.customer_phone || item.customer_email}
-                </div>
+                {!isStoreOwner && (
+                  <>
+                    <div
+                      style={{
+                        fontWeight: 600,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                      title={value}
+                    >
+                      {value}
+                    </div>
+                    <div
+                      style={{
+                        fontSize: "11px",
+                        color: "var(--color-text-muted)",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                      title={item.customer_phone || item.customer_email}
+                    >
+                      {item.customer_phone || item.customer_email}
+                    </div>
+                  </>
+                )}
                 {item.deliveryAddress && (
                   <div
                     style={{
@@ -1904,10 +1908,12 @@ export default function OrderList() {
             </div>
 
             <div style={{ backgroundColor: "#f9fafb", borderRadius: "12px", padding: "14px", marginBottom: "16px", fontSize: "12px", display: "flex", flexDirection: "column", gap: "6px" }}>
-              <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <span style={{ color: "#6b7280" }}>Customer</span>
-                <span style={{ fontWeight: 700 }}>{acceptModalOrder.customer_name}</span>
-              </div>
+              {!isStoreOwner && (
+                <div style={{ display: "flex", justifyContent: "space-between" }}>
+                  <span style={{ color: "#6b7280" }}>Customer</span>
+                  <span style={{ fontWeight: 700 }}>{acceptModalOrder.customer_name}</span>
+                </div>
+              )}
               <div style={{ display: "flex", justifyContent: "space-between" }}>
                 <span style={{ color: "#6b7280" }}>Total Amount</span>
                 <span style={{ fontWeight: 800, color: "#111827" }}>₹{Number(acceptModalOrder.total_amount || 0).toLocaleString("en-IN")}</span>

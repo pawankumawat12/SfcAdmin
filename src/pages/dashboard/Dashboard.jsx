@@ -66,8 +66,12 @@ export default function Dashboard() {
         const columns = [
           { key: "order_number", label: "Order Number", getValue: (r) => r.order_number || `#${r.id}` },
           { key: "created_at", label: "Date & Time", getValue: (r) => new Date(r.created_at).toLocaleString("en-IN") },
-          { key: "customer_name", label: "Customer Name", getValue: (r) => r.customer_name || "Guest" },
-          { key: "customer_phone", label: "Customer Phone", getValue: (r) => r.customer_phone || "" },
+          ...(!isStoreOwner
+            ? [
+                { key: "customer_name", label: "Customer Name", getValue: (r) => r.customer_name || "Guest" },
+                { key: "customer_phone", label: "Customer Phone", getValue: (r) => r.customer_phone || "" },
+              ]
+            : []),
           { key: "items_count", label: "Items", getValue: (r) => r.items_count || 1 },
           { key: "total_amount", label: "Total Amount (₹)", getValue: (r) => Number(r.total_amount || 0).toFixed(2) },
           { key: "payment_method", label: "Payment Mode", getValue: (r) => r.payment_method || "COD" },
@@ -409,16 +413,20 @@ export default function Dashboard() {
         </span>
       ),
     },
-    {
-      key: "customerName",
-      label: "Customer",
-      render: (_, ord) => (
-        <div onClick={() => navigate("/orders")} style={{ cursor: "pointer" }}>
-          <div style={{ fontWeight: 600, color: "#374151" }}>{ord.customerName}</div>
-          <div style={{ fontSize: "10px", color: "#9ca3af" }}>{ord.customerEmail}</div>
-        </div>
-      ),
-    },
+    ...(!isStoreOwner
+      ? [
+          {
+            key: "customerName",
+            label: "Customer",
+            render: (_, ord) => (
+              <div onClick={() => navigate("/orders")} style={{ cursor: "pointer" }}>
+                <div style={{ fontWeight: 600, color: "#374151" }}>{ord.customerName}</div>
+                <div style={{ fontSize: "10px", color: "#9ca3af" }}>{ord.customerEmail}</div>
+              </div>
+            ),
+          },
+        ]
+      : []),
     {
       key: "totalAmount",
       label: isStoreOwner ? "Net Payable" : "Amount",
@@ -1159,7 +1167,7 @@ export default function Dashboard() {
           </div>
           <div style={{ marginTop: "8px", fontSize: "11.5px", color: "#6b7280" }}>
             {isStoreOwner ? (
-              <span>Customer Vol: ₹{formatRupee(kpis.totalRevenue)} | Comm: -₹{formatRupee(kpis.storeCommission || 0)}</span>
+              <span>Order Vol: ₹{formatRupee(kpis.totalRevenue)} | Comm: -₹{formatRupee(kpis.storeCommission || 0)}</span>
             ) : (
               <span>
                 Main Bakery: ₹{formatRupee(kpis.mainBakeryRevenue || 0)} | Branches: ₹{formatRupee(kpis.branchStoresRevenue || 0)}
@@ -1313,46 +1321,48 @@ export default function Dashboard() {
           </div>
         </article>
 
-        {/* Total Customers */}
-        <article
-          onClick={() => navigate("/customers")}
-          style={{
-            background: "#ffffff",
-            padding: "18px 20px",
-            borderRadius: "16px",
-            border: "1px solid #e5e7eb",
-            boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
-            display: "flex",
-            flexDirection: "column",
-            justifyContent: "space-between",
-            cursor: "pointer",
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-            <span style={{ fontSize: "12px", fontWeight: 700, color: "#6b7280" }}>Customers</span>
-            <div
-              style={{
-                width: "34px",
-                height: "34px",
-                borderRadius: "10px",
-                background: "#f0fdfa",
-                color: "#0d9488",
-                display: "grid",
-                placeItems: "center",
-              }}
-            >
-              <Users size={18} />
+        {/* Total Customers (Only for Admin) */}
+        {!isStoreOwner && (
+          <article
+            onClick={() => navigate("/customers")}
+            style={{
+              background: "#ffffff",
+              padding: "18px 20px",
+              borderRadius: "16px",
+              border: "1px solid #e5e7eb",
+              boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
+              display: "flex",
+              flexDirection: "column",
+              justifyContent: "space-between",
+              cursor: "pointer",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <span style={{ fontSize: "12px", fontWeight: 700, color: "#6b7280" }}>Customers</span>
+              <div
+                style={{
+                  width: "34px",
+                  height: "34px",
+                  borderRadius: "10px",
+                  background: "#f0fdfa",
+                  color: "#0d9488",
+                  display: "grid",
+                  placeItems: "center",
+                }}
+              >
+                <Users size={18} />
+              </div>
             </div>
-          </div>
-          <div style={{ marginTop: "12px" }}>
-            <strong style={{ fontSize: "24px", fontWeight: 900, color: "#111827" }}>
-              {kpis.totalCustomers}
-            </strong>
-          </div>
-          <div style={{ marginTop: "8px", fontSize: "11.5px", color: "#0d9488", fontWeight: 700 }}>
-            Registered accounts
-          </div>
-        </article>
+            <div style={{ marginTop: "12px" }}>
+              <strong style={{ fontSize: "24px", fontWeight: 900, color: "#111827" }}>
+                {kpis.totalCustomers}
+              </strong>
+            </div>
+            <div style={{ marginTop: "8px", fontSize: "11.5px", color: "#0d9488", fontWeight: 700 }}>
+              Registered accounts
+            </div>
+          </article>
+        )}
 
         {/* Total Active Menu Products */}
         <article
@@ -2299,7 +2309,14 @@ export default function Dashboard() {
       </div>
 
       {/* 5. RECENT ORDERS & LIVE CUSTOMER ACTIVITY */}
-      <div className="dashboard-two-col dashboard-two-col-orders" style={{ display: "grid", gap: "20px" }}>
+      <div
+        className="dashboard-two-col dashboard-two-col-orders"
+        style={{
+          display: "grid",
+          gap: "20px",
+          gridTemplateColumns: isStoreOwner ? "1fr" : undefined,
+        }}
+      >
         {/* RECENT ORDERS TABLE */}
         <div
           className="dashboard-card"
@@ -2353,17 +2370,18 @@ export default function Dashboard() {
           />
         </div>
 
-        {/* LIVE CUSTOMER ACTIVITY FEED */}
-        <div
-          className="dashboard-card"
-          style={{
-            background: "#ffffff",
-            padding: "24px",
-            borderRadius: "16px",
-            border: "1px solid #e5e7eb",
-            boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
-          }}
-        >
+        {/* LIVE CUSTOMER ACTIVITY FEED (Only for Admin) */}
+        {!isStoreOwner && (
+          <div
+            className="dashboard-card"
+            style={{
+              background: "#ffffff",
+              padding: "24px",
+              borderRadius: "16px",
+              border: "1px solid #e5e7eb",
+              boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
+            }}
+          >
           <div
             style={{
               display: "flex",
@@ -2459,6 +2477,7 @@ export default function Dashboard() {
             </div>
           )}
         </div>
+        )}
       </div>
 
       {/* DEVELOPER TECH ROYALTY CALCULATION BREAKDOWN MODAL (ADMIN ONLY) */}

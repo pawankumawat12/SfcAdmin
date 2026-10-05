@@ -607,33 +607,29 @@ const OrderDetailsModal = ({
 
 
             {/* ================= CUSTOMER ================= */}
-            <OrderSection
-              icon={<User size={15} />}
-              title="Customer Information"
-            >
+            {isAdmin && (
+              <OrderSection
+                icon={<User size={15} />}
+                title="Customer Information"
+              >
+                <div className="row g-3">
+                  <Info
+                    label="Customer Name"
+                    value={order.customer_name || order.customer}
+                  />
 
-              <div className="row g-3">
+                  <Info
+                    label="Email"
+                    value={order.customer_email}
+                  />
 
-                <Info
-                  label="Customer Name"
-                  value={order.customer_name || order.customer}
-                />
-
-                
-
-                <Info
-                  label="Email"
-                  value={order.customer_email}
-                />
-
-                <Info
-                  label="Phone"
-                  value={order.customer_phone}
-                />
-
-              </div>
-
-            </OrderSection>
+                  <Info
+                    label="Phone"
+                    value={order.customer_phone}
+                  />
+                </div>
+              </OrderSection>
+            )}
 
             {/* ================= STORE BRANCH ================= */}
             {order.store_name && (
@@ -1366,7 +1362,7 @@ const OrderDetailsModal = ({
                           </a>
                         )}
 
-                        {address.phone_number && (
+                        {isAdmin && address.phone_number && (
                           <a
                             href={`tel:${address.phone_number.replace(/\s/g, "")}`}
                             className="btn btn-sm btn-outline-primary d-inline-flex align-items-center gap-1.5 fw-semibold"

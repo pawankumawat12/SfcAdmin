@@ -253,7 +253,9 @@ export default function Settings() {
 
         packaging_fee: Number(data.packaging_fee),
         cod_fee: Number(data.cod_fee),
-        platform_fee: Number(data.platform_fee),
+        platform_fee: Array.isArray(data.platform_fee)
+          ? Number(data.platform_fee[data.platform_fee.length - 1]) || 0
+          : Number(data.platform_fee) || 0,
 
         minimum_order_amount: Number(data.minimum_order_amount),
 
@@ -714,12 +716,6 @@ export default function Settings() {
       key: "cod_fee",
       label: "COD Fee",
       icon: Banknote,
-      type: "number",
-    },
-    {
-      key: "platform_fee",
-      label: "Platform Fee",
-      icon: CreditCard,
       type: "number",
     },
     {
