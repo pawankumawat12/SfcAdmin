@@ -23,6 +23,7 @@ import {
   Calculator,
   X,
   FileSpreadsheet,
+  Globe,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { toAssetUrl } from "../../utils/assetUrl";
@@ -156,6 +157,12 @@ export default function Dashboard() {
     codCommission: 0,
     netStorePayout: 0,
     todayStoreEarnings: 0,
+    posTotalSales: 0,
+    posOrdersCount: 0,
+    posTodaySales: 0,
+    onlineOrdersSales: 0,
+    onlineOrdersCount: 0,
+    onlineTodaySales: 0,
     mainBakeryRevenue: 0,
     mainBakeryOrders: 0,
     mainBakeryTodaySales: 0,
@@ -406,10 +413,19 @@ export default function Dashboard() {
       label: "Order #",
       render: (val) => (
         <span
-          style={{ fontWeight: 800, color: "#1f2937", cursor: "pointer" }}
+          style={{ fontWeight: 800, color: "#1f2937", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: "6px" }}
           onClick={() => navigate("/orders")}
         >
           {val}
+          {val?.startsWith("POS-") ? (
+            <span style={{ fontSize: "10px", padding: "1px 6px", borderRadius: "4px", background: "#e0e7ff", color: "#4338ca", fontWeight: 700 }}>
+              POS
+            </span>
+          ) : (
+            <span style={{ fontSize: "10px", padding: "1px 6px", borderRadius: "4px", background: "#e0f2fe", color: "#0284c7", fontWeight: 700 }}>
+              ONLINE
+            </span>
+          )}
         </span>
       ),
     },
@@ -840,6 +856,27 @@ export default function Dashboard() {
                 </div>
               </div>
 
+              {/* POS In-Store Sales (100% Direct Cash/UPI) */}
+              <div
+                style={{
+                  background: "#ffffff",
+                  border: "1px solid #c7d2fe",
+                  borderRadius: "12px",
+                  padding: "10px 14px",
+                  minWidth: "160px",
+                }}
+              >
+                <div style={{ fontSize: "11px", fontWeight: 700, color: "#4f46e5", textTransform: "uppercase" }}>
+                  POS Counter Sales
+                </div>
+                <div style={{ fontSize: "16px", fontWeight: 800, color: "#4338ca", marginTop: "2px" }}>
+                  ₹{formatRupee(kpis.posTotalSales || 0)}
+                </div>
+                <div style={{ fontSize: "10.5px", color: "#64748b" }}>
+                  Direct in-store (0% Comm)
+                </div>
+              </div>
+
               {/* COD Cash in Hand */}
               <div
                 style={{
@@ -878,7 +915,7 @@ export default function Dashboard() {
                   -₹{formatRupee(kpis.storeCommission || 0)}
                 </div>
                 <div style={{ fontSize: "10.5px", color: "#64748b" }}>
-                  Total platform deduction
+                  Online order platform fee
                 </div>
               </div>
             </div>
@@ -1000,7 +1037,7 @@ export default function Dashboard() {
                     fontWeight: 700,
                   }}
                 >
-                  Franchise Branches
+                  Online App Orders
                 </span>
               </div>
               <div style={{ marginTop: "10px" }}>
@@ -1008,7 +1045,7 @@ export default function Dashboard() {
                   ₹{formatRupee(kpis.branchStoresRevenue || 0)}
                 </div>
                 <div style={{ fontSize: "11.5px", color: "#64748b", marginTop: "3px" }}>
-                  {kpis.branchStoresOrders || 0} order(s) | Net Payable: ₹{formatRupee(kpis.totalStorePayable || 0)}
+                  {kpis.branchStoresOrders || 0} online order(s) | Net Payable: ₹{formatRupee(kpis.totalStorePayable || 0)}
                 </div>
               </div>
             </div>
@@ -1117,6 +1154,47 @@ export default function Dashboard() {
                 </div>
               </div>
             </div>
+
+            {/* 5. Main Bakery POS Counter Sales */}
+            <div
+              onClick={() => navigate("/pos")}
+              style={{
+                background: "#ffffff",
+                border: "1px solid #c7d2fe",
+                borderRadius: "12px",
+                padding: "14px 16px",
+                display: "flex",
+                flexDirection: "column",
+                justifyContent: "space-between",
+                cursor: "pointer",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <span style={{ fontSize: "11px", fontWeight: 800, color: "#4338ca", textTransform: "uppercase" }}>
+                  POS Counter Sales
+                </span>
+                <span
+                  style={{
+                    background: "#e0e7ff",
+                    color: "#4f46e5",
+                    padding: "2px 7px",
+                    borderRadius: "6px",
+                    fontSize: "10.5px",
+                    fontWeight: 700,
+                  }}
+                >
+                  In-Store Counter
+                </span>
+              </div>
+              <div style={{ marginTop: "10px" }}>
+                <div style={{ fontSize: "24px", fontWeight: 900, color: "#312e81" }}>
+                  ₹{formatRupee(kpis.posTotalSales || 0)}
+                </div>
+                <div style={{ fontSize: "11.5px", color: "#6366f1", marginTop: "3px", fontWeight: 600 }}>
+                  {kpis.posOrdersCount || 0} counter bill(s) | Today: ₹{formatRupee(kpis.posTodaySales || 0)}
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       )}
@@ -1129,6 +1207,93 @@ export default function Dashboard() {
           gap: "16px",
         }}
       >
+        {/* Dedicated POS Counter Sales Card (All Roles) */}
+        <article
+          onClick={() => navigate("/pos")}
+          style={{
+            background: "#ffffff",
+            padding: "18px 20px",
+            borderRadius: "16px",
+            border: "1px solid #c7d2fe",
+            boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
+            display: "flex",
+            flexDirection: "column",
+            justifyContent: "space-between",
+            cursor: "pointer",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <span style={{ fontSize: "12px", fontWeight: 700, color: "#4338ca" }}>
+              POS Counter Sales
+            </span>
+            <div
+              style={{
+                width: "34px",
+                height: "34px",
+                borderRadius: "10px",
+                background: "#e0e7ff",
+                color: "#4f46e5",
+                display: "grid",
+                placeItems: "center",
+              }}
+            >
+              <Store size={18} />
+            </div>
+          </div>
+          <div style={{ marginTop: "12px" }}>
+            <strong style={{ fontSize: "24px", fontWeight: 900, color: "#312e81" }}>
+              ₹{formatRupee(kpis.posTotalSales || 0)}
+            </strong>
+          </div>
+          <div style={{ marginTop: "8px", fontSize: "11.5px", color: "#6366f1", fontWeight: 600 }}>
+            {kpis.posOrdersCount || 0} counter bill(s) | Today: ₹{formatRupee(kpis.posTodaySales || 0)}
+          </div>
+        </article>
+
+        {/* Dedicated Online App Orders Card (Store Owner Only) */}
+        {isStoreOwner && (
+          <article
+            onClick={() => navigate("/orders")}
+            style={{
+              background: "#ffffff",
+              padding: "18px 20px",
+              borderRadius: "16px",
+              border: "1px solid #bfdbfe",
+              boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
+              display: "flex",
+              flexDirection: "column",
+              justifyContent: "space-between",
+              cursor: "pointer",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <span style={{ fontSize: "12px", fontWeight: 700, color: "#1d4ed8" }}>
+                Online App Orders
+              </span>
+              <div
+                style={{
+                  width: "34px",
+                  height: "34px",
+                  borderRadius: "10px",
+                  background: "#dbeafe",
+                  color: "#2563eb",
+                  display: "grid",
+                  placeItems: "center",
+                }}
+              >
+                <Globe size={18} />
+              </div>
+            </div>
+            <div style={{ marginTop: "12px" }}>
+              <strong style={{ fontSize: "24px", fontWeight: 900, color: "#1e3a8a" }}>
+                ₹{formatRupee(kpis.onlineOrdersSales || 0)}
+              </strong>
+            </div>
+            <div style={{ marginTop: "8px", fontSize: "11.5px", color: "#2563eb", fontWeight: 600 }}>
+              {kpis.onlineOrdersCount || 0} app order(s) | Net: ₹{formatRupee(kpis.onlineStorePayable || 0)}
+            </div>
+          </article>
+        )}
         {/* Total Revenue / Store Net Earnings */}
         <article
           style={{
@@ -1170,7 +1335,7 @@ export default function Dashboard() {
               <span>Order Vol: ₹{formatRupee(kpis.totalRevenue)} | Comm: -₹{formatRupee(kpis.storeCommission || 0)}</span>
             ) : (
               <span>
-                Main Bakery: ₹{formatRupee(kpis.mainBakeryRevenue || 0)} | Branches: ₹{formatRupee(kpis.branchStoresRevenue || 0)}
+                Main Bakery: ₹{formatRupee(kpis.mainBakeryRevenue || 0)} | POS: ₹{formatRupee(kpis.posTotalSales || 0)} | Branches: ₹{formatRupee(kpis.branchStoresRevenue || 0)}
               </span>
             )}
           </div>
