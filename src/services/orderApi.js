@@ -77,6 +77,29 @@ export const orderApi = baseApi.injectEndpoints({
       }),
       invalidatesTags: ["Order", "Product"],
     }),
+    createPosSale: build.mutation({
+      query: (data) => ({
+        url: "/orders/pos/sale",
+        method: "POST",
+        body: data,
+      }),
+      invalidatesTags: ["Order", "Product", "Dashboard", "Ingredients", "InventoryLog"],
+    }),
+    getPosSalesHistory: build.query({
+      query: (params = {}) => ({
+        url: "/orders/pos/history",
+        params: { limit: 50, ...params },
+      }),
+      providesTags: ["Order"],
+    }),
+    updatePosSale: build.mutation({
+      query: ({ id, ...data }) => ({
+        url: `/orders/pos/sale/${id}`,
+        method: "PUT",
+        body: data,
+      }),
+      invalidatesTags: ["Order", "Product", "Dashboard", "Ingredients", "InventoryLog"],
+    }),
   }),
 });
 
@@ -91,5 +114,8 @@ export const {
   useRejectOrderMutation,
   useForwardOrderToStoreMutation,
   useGetAdminOrderByIdQuery,
+  useCreatePosSaleMutation,
+  useGetPosSalesHistoryQuery,
+  useUpdatePosSaleMutation,
 } = orderApi;
 

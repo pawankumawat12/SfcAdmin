@@ -6,6 +6,7 @@ import Login from "../pages/auth/Login";
 import ForgotPassword from "../pages/auth/ForgotPassword";
 import ResetPassword from "../pages/auth/ResetPassword";
 import Dashboard from "../pages/dashboard/Dashboard";
+import PosCounter from "../pages/pos/PosCounter";
 import ProductList from "../pages/products/ProductList";
 import ProductCreate from "../pages/products/ProductCreate";
 import ProductEdit from "../pages/products/ProductEdit";
@@ -57,6 +58,7 @@ export default function AppRoutes() {
       <Route element={<ProtectedRoute />}>
         <Route element={<AdminLayout />}>
           <Route index element={<Dashboard />} />
+          <Route path="pos" element={<PosCounter />} />
           <Route path="products" element={<ProductList />} />
           <Route path="products/create" element={<ProductCreate />} />
           <Route path="products/:id/edit" element={<ProductEdit />} />

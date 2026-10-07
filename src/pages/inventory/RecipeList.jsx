@@ -12,7 +12,7 @@ import Button from "../../components/ui/Button";
 import SearchInput from "../../components/ui/SearchInput";
 import Select from "../../components/ui/Select";
 import Input from "../../components/ui/Input";
-import { useGetProductsQuery } from "../../services/productApi";
+import { useGetPosProductsQuery } from "../../services/productApi";
 import {
   useGetIngredientsQuery,
   useGetProductRecipeQuery,
@@ -26,13 +26,16 @@ export default function RecipeList() {
   const debouncedProductSearch = useDebouncedValue(productSearch, 300);
   const [selectedProductId, setSelectedProductId] = useState(null);
 
-  const { data: productsData, isLoading: isLoadingProducts } = useGetProductsQuery({
-    limit: 100,
+  // STRICT REQUIREMENT: Only Admin products (admin_only: true), including POS-created items (include_pos: true)
+  const { data: productsData, isLoading: isLoadingProducts } = useGetPosProductsQuery({
+    limit: 200,
+    admin_only: true,
+    include_pos: true,
     ...(debouncedProductSearch.trim() ? { search: debouncedProductSearch.trim() } : {}),
   });
-  const products = productsData?.data || [];
+  const products = (productsData?.data || []).filter((p) => p.store_id == null);
 
-  const { data: ingredientsData } = useGetIngredientsQuery({ limit: 100 });
+  const { data: ingredientsData } = useGetIngredientsQuery({ limit: 200, admin_only: true });
   const allIngredients = ingredientsData?.data || [];
 
   const {
@@ -211,9 +214,26 @@ export default function RecipeList() {
                           fontSize: "13px",
                           fontWeight: isSelected ? 600 : 500,
                           color: isSelected ? "var(--purple, #6253e8)" : "var(--ink, #1f2937)",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "6px",
                         }}
                       >
-                        {p.name}
+                        <span>{p.name}</span>
+                        {p.is_pos_only && (
+                          <span
+                            className="badge"
+                            style={{
+                              fontSize: "9.5px",
+                              backgroundColor: "#ede9fe",
+                              color: "#6b21a8",
+                              fontWeight: 600,
+                              padding: "1px 5px",
+                            }}
+                          >
+                            POS
+                          </span>
+                        )}
                       </div>
                       <small style={{ color: "var(--muted, #6d6c80)", fontSize: "11px" }}>
                         {p.category_name || "Food Item"}

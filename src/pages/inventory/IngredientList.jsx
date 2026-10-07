@@ -52,6 +52,7 @@ export default function IngredientList() {
     () => ({
       page,
       limit,
+      admin_only: true, // STRICT REQUIREMENT: Only Admin's raw materials, never other stores
       ...(debouncedQuery.trim() ? { search: debouncedQuery.trim() } : {}),
       ...(selectedCategory ? { category: selectedCategory } : {}),
       ...(selectedStockStatus ? { stockStatus: selectedStockStatus } : {}),

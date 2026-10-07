@@ -39,6 +39,7 @@ import {
   MapPin,
   Film,
   Code,
+  Calculator,
 } from "lucide-react";
 import { baseApi } from "../services/baseApi";
 import {
@@ -64,6 +65,7 @@ const getNavigationItems = (role) => {
   if (role === "store_owner") {
     return [
       { type: "link", label: "Dashboard", to: "/", icon: LayoutDashboard },
+      { type: "link", label: "POS Counter", to: "/pos", icon: Calculator },
       {
         type: "group",
         id: "catalog",
@@ -118,6 +120,7 @@ const getNavigationItems = (role) => {
   // Administrator navigation
   return [
     { type: "link", label: "Dashboard", to: "/", icon: LayoutDashboard },
+    { type: "link", label: "POS Counter", to: "/pos", icon: Calculator },
     
     {
       type: "group",
@@ -210,6 +213,7 @@ const getNavigationItems = (role) => {
 
 const getPageTitle = (pathname) => {
   if (pathname === "/") return "Dashboard";
+  if (pathname.startsWith("/pos")) return "POS Counter";
   if (pathname.startsWith("/stores")) return "Store Branches & Owners";
   if (pathname.startsWith("/products/create")) return "Add Product";
   if (pathname.startsWith("/products") && pathname.includes("/edit")) return "Edit Product";
