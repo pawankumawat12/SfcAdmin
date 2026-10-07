@@ -199,6 +199,9 @@ export default function EditStoreModal({ isOpen, onClose, store }) {
       onMouseDown={(e) => {
         if (e.target === e.currentTarget && !isUpdating) onClose();
       }}
+      onClick={(e) => {
+        if (e.target === e.currentTarget && !isUpdating) onClose();
+      }}
     >
       <section
         className="admin-dialog admin-dialog-lg"

@@ -92,6 +92,9 @@ export default function CreateStoreModal({ isOpen, onClose, onSuccess }) {
       onMouseDown={(e) => {
         if (e.target === e.currentTarget && !isCreating) handleClose();
       }}
+      onClick={(e) => {
+        if (e.target === e.currentTarget && !isCreating) handleClose();
+      }}
     >
       <section
         className="admin-dialog admin-dialog-lg"

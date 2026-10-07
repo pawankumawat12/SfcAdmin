@@ -30,7 +30,7 @@ export const productApi = baseApi.injectEndpoints({
     getPosProducts: build.query({
       query: (params = {}) => ({
         url: "/products",
-        params: { limit: 300, include_pos: true, admin_only: true, ...params },
+        params: { limit: 300, include_pos: true, ...params },
       }),
       providesTags: (result) => [
         "Product",

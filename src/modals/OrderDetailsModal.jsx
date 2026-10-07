@@ -300,7 +300,11 @@ const OrderDetailsModal = ({
         backgroundColor: "rgba(0,0,0,0.5)",
         zIndex: 9999,
       }}
-      onClick={onClose}
+      onClick={(e) => {
+        if (e.target === e.currentTarget || e.target.classList.contains("modal-dialog")) {
+          onClose();
+        }
+      }}
     >
       <div
         className="modal-dialog modal-dialog-centered modal-dialog-scrollable"
@@ -309,9 +313,11 @@ const OrderDetailsModal = ({
           width: "calc(100% - 16px)",
           margin: "0.5rem auto",
         }}
-        onClick={(e) => e.stopPropagation()}
       >
-        <div className="modal-content border-0 rounded-4 shadow">
+        <div
+          className="modal-content border-0 rounded-4 shadow"
+          onClick={(e) => e.stopPropagation()}
+        >
 
           <div className="modal-header justify-content-between px-3 px-sm-4 py-3">
 

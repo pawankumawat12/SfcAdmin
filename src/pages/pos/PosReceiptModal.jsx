@@ -45,6 +45,9 @@ export default function PosReceiptModal({
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
     >
       <div
         className="card border shadow-lg rounded-3 overflow-hidden w-100 bg-white"
@@ -52,9 +55,10 @@ export default function PosReceiptModal({
           maxWidth: "460px",
           maxHeight: "92vh",
           display: "flex",
-            flexDirection: "column",
-          }}
-        >
+          flexDirection: "column",
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
         {/* Header */}
         <div className="d-flex align-items-center justify-content-between px-4 py-3 border-bottom bg-light">
           <div className="d-flex align-items-center gap-2">

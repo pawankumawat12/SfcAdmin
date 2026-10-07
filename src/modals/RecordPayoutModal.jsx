@@ -72,6 +72,9 @@ export default function RecordPayoutModal({
         zIndex: 1060,
         padding: "16px",
       }}
+      onClick={(e) => {
+        if (e.target === e.currentTarget && !isLoading) onClose();
+      }}
     >
       <div
         style={{

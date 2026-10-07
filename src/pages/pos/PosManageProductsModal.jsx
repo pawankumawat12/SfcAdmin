@@ -15,6 +15,7 @@ import {
 import toast from "react-hot-toast";
 import { useDeleteProductMutation, useUpdateProductMutation } from "../../services/productApi";
 import toAssetUrl from "../../utils/assetUrl";
+import useDebouncedValue from "../../utils/useDebouncedValue";
 import ConfirmDialog from "../../components/ui/ConfirmDialog";
 
 export default function PosManageProductsModal({
@@ -23,31 +24,33 @@ export default function PosManageProductsModal({
   allProducts = [],
   onAddNew,
   onEditProduct,
+  storeId,
+  storeName,
 }) {
   const [searchTerm, setSearchTerm] = useState("");
+  const debouncedSearchTerm = useDebouncedValue(searchTerm, 300);
   const [itemToDelete, setItemToDelete] = useState(null);
 
   const [deleteProduct, { isLoading: isDeleting }] = useDeleteProductMutation();
   const [updateProduct] = useUpdateProductMutation();
 
-  // Filter only items that were created exclusively for Admin POS
+  // Filter only items that were created exclusively for the active POS store
   const posOnlyItems = useMemo(() => {
-    return (allProducts || []).filter(
-      (p) =>
-        p.store_id == null &&
-        (p.is_pos_only === true || p.isPosOnly === true)
-    );
-  }, [allProducts]);
+    return (allProducts || []).filter((p) => {
+      const matchStore = storeId ? (p.store_id == null || Number(p.store_id) === Number(storeId)) : p.store_id == null;
+      return matchStore && (p.is_pos_only === true || p.isPosOnly === true);
+    });
+  }, [allProducts, storeId]);
 
   const filteredItems = useMemo(() => {
-    if (!searchTerm.trim()) return posOnlyItems;
-    const query = searchTerm.toLowerCase();
+    if (!debouncedSearchTerm.trim()) return posOnlyItems;
+    const query = debouncedSearchTerm.toLowerCase();
     return posOnlyItems.filter(
       (item) =>
         item.name?.toLowerCase().includes(query) ||
         item.category_name?.toLowerCase().includes(query)
     );
-  }, [posOnlyItems, searchTerm]);
+  }, [posOnlyItems, debouncedSearchTerm]);
 
   const handleDeleteConfirm = async () => {
     if (!itemToDelete) return;
@@ -72,6 +75,8 @@ export default function PosManageProductsModal({
         stock: item.stock,
         status: nextActive ? "Active" : "Inactive",
         is_pos_only: true,
+        storeId: storeId ? Number(storeId) : undefined,
+        store_id: storeId ? Number(storeId) : undefined,
       }).unwrap();
       toast.success(
         `"${item.name}" is now ${nextActive ? "Active" : "Inactive"}`
@@ -96,6 +101,9 @@ export default function PosManageProductsModal({
         onClick={(e) => {
           if (e.target === e.currentTarget) onClose();
         }}
+        onMouseDown={(e) => {
+          if (e.target === e.currentTarget) onClose();
+        }}
       >
         <div
           className="card border shadow-lg rounded-3 overflow-hidden w-100 bg-white"
@@ -106,6 +114,7 @@ export default function PosManageProductsModal({
             display: "flex",
             flexDirection: "column",
           }}
+          onClick={(e) => e.stopPropagation()}
         >
           {/* Header */}
           <div className="d-flex align-items-center justify-content-between px-4 py-3 border-bottom bg-light">
@@ -114,7 +123,7 @@ export default function PosManageProductsModal({
                 Manage POS Exclusive Items
               </h5>
               <span className="text-muted" style={{ fontSize: "12px" }}>
-                {posOnlyItems.length} Admin items configured specifically for POS counter
+                {posOnlyItems.length} {storeName || "Store"} items configured specifically for POS counter
               </span>
             </div>
             <div className="d-flex align-items-center gap-2">
@@ -347,6 +356,7 @@ export default function PosManageProductsModal({
         confirmText="Yes, Delete"
         cancelText="Cancel"
         isLoading={isDeleting}
+        zIndex={1070}
         onConfirm={handleDeleteConfirm}
         onCancel={() => setItemToDelete(null)}
       />

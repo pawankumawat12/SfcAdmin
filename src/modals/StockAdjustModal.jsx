@@ -76,6 +76,9 @@ export default function StockAdjustModal({ isOpen, onClose, ingredient = null })
       onMouseDown={(e) => {
         if (e.target === e.currentTarget && !isLoading) onClose();
       }}
+      onClick={(e) => {
+        if (e.target === e.currentTarget && !isLoading) onClose();
+      }}
     >
       <section
         className="admin-dialog admin-dialog-sm"

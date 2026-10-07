@@ -117,14 +117,20 @@ export default function WhatsAppModal({ isOpen, onClose }) {
         backgroundColor: "rgba(0,0,0,0.55)",
         zIndex: 9999,
       }}
-      onClick={onClose}
+      onClick={(e) => {
+        if (e.target === e.currentTarget || e.target.classList.contains("modal-dialog")) {
+          onClose();
+        }
+      }}
     >
       <div
         className="modal-dialog modal-dialog-centered"
         style={{ maxWidth: "560px" }}
-        onClick={(e) => e.stopPropagation()}
       >
-        <div className="modal-content border-0 rounded-4 shadow-lg overflow-hidden">
+        <div
+          className="modal-content border-0 rounded-4 shadow-lg overflow-hidden"
+          onClick={(e) => e.stopPropagation()}
+        >
           {/* Header */}
           <div
             className="modal-header px-4 py-3 border-0 text-white"

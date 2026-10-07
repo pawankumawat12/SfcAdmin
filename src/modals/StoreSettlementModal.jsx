@@ -399,6 +399,9 @@ export default function StoreSettlementModal({
         zIndex: 1050,
         padding: "16px",
       }}
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
     >
       <div
         style={{

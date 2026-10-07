@@ -23,9 +23,18 @@ import {
   useUpdatePosSaleMutation,
 } from "../../services/orderApi";
 import Button from "../../components/ui/Button";
+import useDebouncedValue from "../../utils/useDebouncedValue";
 
-export default function PosSalesHistoryModal({ isOpen, onClose, allProducts = [], onSaleUpdated }) {
+export default function PosSalesHistoryModal({
+  isOpen,
+  onClose,
+  allProducts = [],
+  onSaleUpdated,
+  storeId,
+  storeName,
+}) {
   const [searchTerm, setSearchTerm] = useState("");
+  const debouncedSearchTerm = useDebouncedValue(searchTerm, 400);
   const [editingSale, setEditingSale] = useState(null);
 
   // Editable fields when editing an order
@@ -42,7 +51,11 @@ export default function PosSalesHistoryModal({ isOpen, onClose, allProducts = []
     isLoading,
     refetch,
   } = useGetPosSalesHistoryQuery(
-    { search: searchTerm, limit: 50 },
+    {
+      search: debouncedSearchTerm.trim() || undefined,
+      limit: 50,
+      storeId: storeId !== undefined ? storeId : undefined,
+    },
     { skip: !isOpen }
   );
 
@@ -178,9 +191,21 @@ export default function PosSalesHistoryModal({ isOpen, onClose, allProducts = []
       className="modal fade show d-block"
       style={{ backgroundColor: "rgba(0,0,0,0.55)", zIndex: 1060 }}
       tabIndex="-1"
+      onClick={(e) => {
+        if (e.target === e.currentTarget || e.target.classList.contains("modal-dialog")) {
+          if (editingSale) {
+            setEditingSale(null);
+          } else {
+            onClose();
+          }
+        }
+      }}
     >
       <div className="modal-dialog modal-dialog-centered modal-xl modal-dialog-scrollable">
-        <div className="modal-content shadow-lg border-0 rounded-4 overflow-hidden">
+        <div
+          className="modal-content shadow-lg border-0 rounded-4 overflow-hidden"
+          onClick={(e) => e.stopPropagation()}
+        >
           {/* Header */}
           <div className="modal-header border-bottom bg-light px-4 py-3 d-flex align-items-center justify-content-between">
             <div className="d-flex align-items-center gap-2">
@@ -197,12 +222,14 @@ export default function PosSalesHistoryModal({ isOpen, onClose, allProducts = []
               </div>
               <div>
                 <h5 className="modal-title fw-bold mb-0 text-dark">
-                  {editingSale ? `Edit POS Sale #${editingSale.order_number}` : "Manual POS Sales History"}
+                  {editingSale
+                    ? `Edit POS Sale #${editingSale.order_number}`
+                    : `${storeName ? `${storeName} - ` : ""}Manual POS Sales History`}
                 </h5>
                 <p className="text-muted small mb-0">
                   {editingSale
                     ? "Modify quantities, products, or payment. Stock & revenue will adjust automatically."
-                    : "Complete record of manually sold products, revenue, and order items."}
+                    : `Complete record of manually sold products, revenue, and order items${storeName ? ` for ${storeName}` : ""}.`}
                 </p>
               </div>
             </div>
@@ -450,7 +477,7 @@ export default function PosSalesHistoryModal({ isOpen, onClose, allProducts = []
                     <Receipt size={40} className="text-muted opacity-30 mb-2" />
                     <h6 className="fw-semibold text-secondary">No manual sales found</h6>
                     <p className="text-muted small">
-                      {searchTerm
+                      {debouncedSearchTerm
                         ? "No orders matching your search query."
                         : "Sales completed from the POS counter will appear here."}
                     </p>

@@ -146,6 +146,11 @@ export default function ChangeEmailModal({ isOpen, onClose, currentEmail = "" })
           onClose();
         }
       }}
+      onClick={(e) => {
+        if (e.target === e.currentTarget && !isRequesting && !isVerifying) {
+          onClose();
+        }
+      }}
     >
       <section
         className="admin-dialog admin-dialog-sm"

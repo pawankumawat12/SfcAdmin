@@ -122,6 +122,9 @@ export default function SupplierModal({
       onMouseDown={(e) => {
         if (e.target === e.currentTarget && !isLoading) onClose();
       }}
+      onClick={(e) => {
+        if (e.target === e.currentTarget && !isLoading) onClose();
+      }}
     >
       <section
         className="admin-dialog"

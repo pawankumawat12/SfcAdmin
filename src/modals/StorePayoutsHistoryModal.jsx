@@ -126,6 +126,9 @@ export default function StorePayoutsHistoryModal({
         zIndex: 1060,
         padding: "16px",
       }}
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
     >
       <div
         style={{

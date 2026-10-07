@@ -1211,7 +1211,7 @@ td>b {
   background: #15152677 !important;
   display: grid;
   place-items: center;
-  z-index: 100;
+  z-index: 1060;
 }
 
 .confirm-dialog,

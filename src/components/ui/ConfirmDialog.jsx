@@ -1,3 +1,4 @@
+import { createPortal } from "react-dom";
 import { AlertTriangle, LoaderCircle, X } from "lucide-react";
 import Button from "./Button";
 import { useThrottledCallback } from "../../utils/throttle";
@@ -15,6 +16,7 @@ export default function ConfirmDialog({
   confirmVariant,
   isLoading = false,
   error = "",
+  zIndex = 1070,
 }) {
   const throttledConfirm = useThrottledCallback(onConfirm, 1500);
   if (isOpen === false) return null;
@@ -22,10 +24,18 @@ export default function ConfirmDialog({
   const label = confirmText || confirmLabel;
   const isDanger = confirmVariant ? confirmVariant === "danger" : danger;
 
-  return (
+  const content = (
     <div
       className="modal-backdrop"
+      style={{
+        zIndex,
+        position: "fixed",
+        inset: 0,
+      }}
       onMouseDown={(event) => {
+        if (event.target === event.currentTarget && !isLoading && handleClose) handleClose();
+      }}
+      onClick={(event) => {
         if (event.target === event.currentTarget && !isLoading && handleClose) handleClose();
       }}
     >
@@ -71,4 +81,8 @@ export default function ConfirmDialog({
       </section>
     </div>
   );
+
+  return typeof document !== "undefined"
+    ? createPortal(content, document.body)
+    : content;
 }

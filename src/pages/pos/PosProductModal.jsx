@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { X, Upload, Package, DollarSign, Layers, CheckCircle2, AlertCircle, Sparkles } from "lucide-react";
+import { X, Upload, Package, DollarSign, Layers, CheckCircle2, AlertCircle, Sparkles, Trash2 } from "lucide-react";
 import toast from "react-hot-toast";
 import {
   useCreateProductMutation,
@@ -8,7 +8,7 @@ import {
 } from "../../services/productApi";
 import toAssetUrl from "../../utils/assetUrl";
 
-export default function PosProductModal({ isOpen, onClose, productToEdit, onSuccess }) {
+export default function PosProductModal({ isOpen, onClose, productToEdit, onSuccess, storeId, storeName }) {
   const [name, setName] = useState("");
   const [categoryId, setCategoryId] = useState("");
   const [price, setPrice] = useState("");
@@ -24,6 +24,19 @@ export default function PosProductModal({ isOpen, onClose, productToEdit, onSucc
   const [createProduct, { isLoading: isCreating }] = useCreateProductMutation();
   const [updateProduct, { isLoading: isUpdating }] = useUpdateProductMutation();
   const isSaving = isCreating || isUpdating;
+
+  const resetForm = () => {
+    setName("");
+    setCategoryId(categories.length > 0 ? String(categories[0].id) : "");
+    setPrice("");
+    setStock("999");
+    setDescription("");
+    setStatus("Active");
+    setImageFile(null);
+    setImagePreview("");
+    const fileInput = document.getElementById("posProductImageInput");
+    if (fileInput) fileInput.value = "";
+  };
 
   useEffect(() => {
     if (productToEdit) {
@@ -46,25 +59,33 @@ export default function PosProductModal({ isOpen, onClose, productToEdit, onSucc
       setImagePreview(prevImg ? toAssetUrl(prevImg) : "");
       setImageFile(null);
     } else {
-      setName("");
-      setCategoryId(categories.length > 0 ? String(categories[0].id) : "");
-      setPrice("");
-      setStock("999");
-      setDescription("");
-      setStatus("Active");
-      setImageFile(null);
-      setImagePreview("");
+      resetForm();
     }
-  }, [productToEdit, isOpen, categories]);
+  }, [productToEdit, isOpen]);
 
   if (!isOpen) return null;
 
   const handleImageChange = (e) => {
     const file = e.target.files?.[0];
     if (file) {
+      if (!file.type.startsWith("image/")) {
+        toast.error("Please select a valid image file (PNG, JPG, WEBP, GIF)");
+        return;
+      }
+      if (file.size > 5 * 1024 * 1024) {
+        toast.error("Image file size should not exceed 5MB");
+        return;
+      }
       setImageFile(file);
       setImagePreview(URL.createObjectURL(file));
     }
+  };
+
+  const handleRemoveImage = () => {
+    setImageFile(null);
+    setImagePreview("");
+    const fileInput = document.getElementById("posProductImageInput");
+    if (fileInput) fileInput.value = "";
   };
 
   const handleSubmit = async (e) => {
@@ -104,6 +125,8 @@ export default function PosProductModal({ isOpen, onClose, productToEdit, onSucc
           status,
           availabilityType: "IN_STOCK",
           is_pos_only: true,
+          storeId: storeId ? Number(storeId) : undefined,
+          store_id: storeId ? Number(storeId) : undefined,
           existingImages,
           imageFiles: imageFile ? [imageFile] : [],
         }).unwrap();
@@ -119,14 +142,23 @@ export default function PosProductModal({ isOpen, onClose, productToEdit, onSucc
           status,
           availabilityType: "IN_STOCK",
           is_pos_only: true,
+          storeId: storeId ? Number(storeId) : undefined,
+          store_id: storeId ? Number(storeId) : undefined,
           imageFiles: imageFile ? [imageFile] : [],
         }).unwrap();
 
         toast.success("New POS Counter Product created!");
       }
 
-      onSuccess?.();
       onClose();
+      resetForm();
+      if (onSuccess) {
+        try {
+          await onSuccess();
+        } catch (callbackErr) {
+          console.warn("PosProductModal onSuccess callback notice:", callbackErr);
+        }
+      }
     } catch (err) {
       console.error("Save POS product error:", err);
       toast.error(err?.data?.message || err?.message || "Failed to save product");
@@ -145,10 +177,14 @@ export default function PosProductModal({ isOpen, onClose, productToEdit, onSucc
       onClick={(e) => {
         if (e.target === e.currentTarget && !isSaving) onClose();
       }}
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget && !isSaving) onClose();
+      }}
     >
       <div
         className="card border shadow-lg rounded-3 overflow-hidden w-100 bg-white"
         style={{ maxWidth: "560px", maxHeight: "90vh", display: "flex", flexDirection: "column" }}
+        onClick={(e) => e.stopPropagation()}
       >
         {/* Modal Header */}
         <div className="d-flex align-items-center justify-content-between px-4 py-3 border-bottom bg-light">
@@ -157,7 +193,7 @@ export default function PosProductModal({ isOpen, onClose, productToEdit, onSucc
               {productToEdit ? "Edit POS Item" : "Create POS Counter Item"}
             </h5>
             <span className="text-muted" style={{ fontSize: "12px" }}>
-              Admin Item exclusively for POS Terminal (Hidden from Online Store)
+              {storeName ? `${storeName} Item exclusively for POS Terminal (Hidden from Online Store)` : "Item exclusively for POS Terminal (Hidden from Online Store)"}
             </span>
           </div>
           <button
@@ -286,7 +322,7 @@ export default function PosProductModal({ isOpen, onClose, productToEdit, onSucc
               </label>
               <div className="d-flex align-items-center gap-3">
                 <div
-                  className="rounded-3 border border-dashed d-flex align-items-center justify-content-center overflow-hidden position-relative bg-light"
+                  className="rounded-3 border border-dashed d-flex align-items-center justify-content-center overflow-hidden position-relative bg-light shadow-2xs"
                   style={{ width: "70px", height: "70px", flexShrink: 0 }}
                 >
                   {imagePreview ? (
@@ -294,6 +330,7 @@ export default function PosProductModal({ isOpen, onClose, productToEdit, onSucc
                       src={imagePreview}
                       alt="Preview"
                       className="w-100 h-100 object-fit-cover"
+                      onError={() => setImagePreview("")}
                     />
                   ) : (
                     <Package size={28} className="text-muted opacity-50" />
@@ -304,20 +341,33 @@ export default function PosProductModal({ isOpen, onClose, productToEdit, onSucc
                     type="file"
                     id="posProductImageInput"
                     className="d-none"
-                    accept="image/*"
+                    accept="image/png,image/jpeg,image/webp,image/gif"
                     onChange={handleImageChange}
                     disabled={isSaving}
                   />
-                  <label
-                    htmlFor="posProductImageInput"
-                    className="btn btn-outline-secondary btn-sm d-inline-flex align-items-center gap-2 rounded-3 px-3 py-1.5"
-                    style={{ cursor: "pointer" }}
-                  >
-                    <Upload size={14} />
-                    <span>{imagePreview ? "Change Image" : "Upload Picture"}</span>
-                  </label>
+                  <div className="d-flex align-items-center gap-2 flex-wrap">
+                    <label
+                      htmlFor="posProductImageInput"
+                      className="btn btn-outline-secondary btn-sm d-inline-flex align-items-center gap-2 rounded-3 px-3 py-1.5 mb-0"
+                      style={{ cursor: "pointer" }}
+                    >
+                      <Upload size={14} />
+                      <span>{imagePreview ? "Change Image" : "Upload Picture"}</span>
+                    </label>
+                    {imagePreview && (
+                      <button
+                        type="button"
+                        className="btn btn-outline-danger btn-sm d-inline-flex align-items-center gap-1.5 rounded-3 px-2.5 py-1.5"
+                        onClick={handleRemoveImage}
+                        disabled={isSaving}
+                      >
+                        <Trash2 size={14} />
+                        <span>Remove</span>
+                      </button>
+                    )}
+                  </div>
                   <div className="text-muted mt-1" style={{ fontSize: "11px" }}>
-                    If omitted, a high-quality food illustration will be assigned automatically.
+                    PNG, JPG, or WEBP (Max 5MB). Standard item icon is assigned if omitted.
                   </div>
                 </div>
               </div>

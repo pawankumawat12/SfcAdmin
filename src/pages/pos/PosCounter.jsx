@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useSelector } from "react-redux";
 import {
   Search,
@@ -29,20 +29,70 @@ import {
   useGetProductCategoriesQuery,
 } from "../../services/productApi";
 import { useCreatePosSaleMutation } from "../../services/orderApi";
+import { useGetMyStoreQuery, useGetStoresQuery } from "../../services/storeApi";
 import toAssetUrl from "../../utils/assetUrl";
+import useDebouncedValue from "../../utils/useDebouncedValue";
 import PosProductModal from "./PosProductModal";
 import PosManageProductsModal from "./PosManageProductsModal";
 import PosSalesHistoryModal from "./PosSalesHistoryModal";
 
 export default function PosCounter() {
   const user = useSelector((state) => state.auth?.user);
+  const isAdmin = user?.role === "admin";
+  const isStoreOwner = user?.role === "store_owner";
 
-  // STRICT REQUIREMENT: Only Admin products (admin_only: true) are fetched, never other stores!
+  // If Store Owner, fetch own store
+  const { data: myStoreResponse } = useGetMyStoreQuery(
+    undefined,
+    { skip: !isStoreOwner }
+  );
+
+  // If Admin, fetch stores list to allow switching between Main Bakery and branch stores
+  const { data: storesResponse } = useGetStoresQuery(
+    { limit: 100 },
+    { skip: !isAdmin }
+  );
+
+  const myStore = myStoreResponse?.store || myStoreResponse?.data;
+  const storesList = storesResponse?.data || [];
+
+  // Admin selected store: "admin" (Main Bakery) or specific branch store id
+  const [selectedStoreId, setSelectedStoreId] = useState("admin");
+
+  const activeStoreId = useMemo(() => {
+    if (isStoreOwner) {
+      return myStore?.id || user?.store_id || null;
+    }
+    return selectedStoreId; // "admin" or numeric store id
+  }, [isStoreOwner, myStore?.id, user?.store_id, selectedStoreId]);
+
+  const activeStoreName = useMemo(() => {
+    if (isStoreOwner) {
+      return myStore?.name || "Branch Store";
+    }
+    if (selectedStoreId === "admin") {
+      return "Main Bakery (Head Office)";
+    }
+    const found = storesList.find((s) => String(s.id) === String(selectedStoreId));
+    return found ? found.name : "Branch Store";
+  }, [isStoreOwner, myStore?.name, selectedStoreId, storesList]);
+
+  // Strict POS query params - includes global bakery products and branch store items
+  const posQueryParams = useMemo(() => {
+    if (isStoreOwner) {
+      return { limit: 300, include_admin: true, store_id: activeStoreId || undefined };
+    }
+    if (selectedStoreId === "admin") {
+      return { limit: 300, admin_only: true };
+    }
+    return { limit: 300, include_admin: true, store_id: selectedStoreId };
+  }, [isStoreOwner, activeStoreId, selectedStoreId]);
+
   const {
     data: productsResponse,
     isLoading: isLoadingProducts,
     refetch: refetchProducts,
-  } = useGetPosProductsQuery({ limit: 300, admin_only: true });
+  } = useGetPosProductsQuery(posQueryParams);
 
   const { data: categoriesResponse } = useGetProductCategoriesQuery();
 
@@ -51,18 +101,19 @@ export default function PosCounter() {
 
   // Filter and search state
   const [searchQuery, setSearchQuery] = useState("");
+  const debouncedSearchQuery = useDebouncedValue(searchQuery, 300);
   const [selectedCategory, setSelectedCategory] = useState("ALL");
-  const [productTypeFilter, setProductTypeFilter] = useState("ALL"); // ALL | POS_ONLY | REGULAR
+  const [productTypeFilter, setProductTypeFilter] = useState("ALL");
 
   // Cart state
   const [cartItems, setCartItems] = useState([]);
   const [customerName, setCustomerName] = useState("Walk-in Customer");
   const [customerPhone, setCustomerPhone] = useState("");
-  const [discountType, setDiscountType] = useState("FIXED"); // FIXED | PERCENT
+  const [discountType, setDiscountType] = useState("FIXED"); 
   const [discountValue, setDiscountValue] = useState("");
-  const [taxPercent] = useState(5); // 5% GST
+  const [taxPercent] = useState(5); 
   const [includeTax, setIncludeTax] = useState(false);
-  const [paymentMethod, setPaymentMethod] = useState("Cash"); // Cash | UPI | Card
+  const [paymentMethod, setPaymentMethod] = useState("Cash"); 
   const [cashReceived, setCashReceived] = useState("");
   const [notes, setNotes] = useState("");
 
@@ -72,17 +123,52 @@ export default function PosCounter() {
   const [isManageModalOpen, setIsManageModalOpen] = useState(false);
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
 
-  // Responsive mobile cart drawer toggle
   const [mobileCartOpen, setMobileCartOpen] = useState(false);
+
+  useEffect(() => {
+    if (mobileCartOpen) {
+      const prevOverflow = document.body.style.overflow;
+      document.body.style.overflow = "hidden";
+      const handleKeyDown = (e) => {
+        if (e.key === "Escape") setMobileCartOpen(false);
+      };
+      window.addEventListener("keydown", handleKeyDown);
+      return () => {
+        document.body.style.overflow = prevOverflow;
+        window.removeEventListener("keydown", handleKeyDown);
+      };
+    }
+  }, [mobileCartOpen]);
+
+  const handleStoreChange = (newStoreId) => {
+    if (newStoreId !== selectedStoreId) {
+      if (cartItems.length > 0) {
+        if (!window.confirm("Switching store will clear the current POS cart. Continue?")) {
+          return;
+        }
+        setCartItems([]);
+      }
+      setSelectedStoreId(newStoreId);
+    }
+  };
 
   // API mutation
   const [createPosSale, { isLoading: isProcessingSale }] =
     useCreatePosSaleMutation();
 
-  // Filter only Admin products (guarantee store_id is null / undefined)
   const filteredProducts = useMemo(() => {
-    // Defense-in-depth: Ensure no store products ever leak through
-    let result = allProducts.filter((p) => p.store_id == null);
+    let result = (allProducts || []).filter((p) => {
+      if (isStoreOwner) {
+        if (activeStoreId) {
+          return p.store_id == null || Number(p.store_id) === Number(activeStoreId);
+        }
+        return true;
+      }
+      if (isAdmin && selectedStoreId !== "admin") {
+        return p.store_id == null || Number(p.store_id) === Number(selectedStoreId);
+      }
+      return p.store_id == null;
+    });
 
     // Filter by type
     if (productTypeFilter === "POS_ONLY") {
@@ -100,9 +186,9 @@ export default function PosCounter() {
       );
     }
 
-    // Filter by search query
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase().trim();
+    // Filter by search query (debounced)
+    if (debouncedSearchQuery.trim()) {
+      const q = debouncedSearchQuery.toLowerCase().trim();
       result = result.filter(
         (p) =>
           p.name?.toLowerCase().includes(q) ||
@@ -112,7 +198,7 @@ export default function PosCounter() {
     }
 
     return result;
-  }, [allProducts, productTypeFilter, selectedCategory, searchQuery]);
+  }, [allProducts, isStoreOwner, isAdmin, selectedStoreId, activeStoreId, productTypeFilter, selectedCategory, debouncedSearchQuery]);
 
   // Cart Calculations
   const subtotal = useMemo(() => {
@@ -272,7 +358,10 @@ export default function PosCounter() {
             : totalAmount,
         changeAmount: changeDue,
         notes: notes.trim(),
-        storeId: null, // Always Admin store
+        storeId:
+          isStoreOwner
+            ? (activeStoreId || user?.store_id || null)
+            : (selectedStoreId === "admin" ? null : Number(selectedStoreId)),
       };
 
       await createPosSale(salePayload).unwrap();
@@ -299,12 +388,15 @@ export default function PosCounter() {
   };
 
   const posItemsCount = useMemo(() => {
-    return allProducts.filter(
-      (p) =>
-        p.store_id == null &&
-        (p.is_pos_only === true || p.isPosOnly === true)
-    ).length;
-  }, [allProducts]);
+    return (allProducts || []).filter((p) => {
+      const matchStore = isStoreOwner
+        ? (!activeStoreId || p.store_id == null || Number(p.store_id) === Number(activeStoreId))
+        : isAdmin && selectedStoreId !== "admin"
+        ? p.store_id == null || Number(p.store_id) === Number(selectedStoreId)
+        : p.store_id == null;
+      return matchStore && (p.is_pos_only === true || p.isPosOnly === true);
+    }).length;
+  }, [allProducts, isStoreOwner, isAdmin, selectedStoreId, activeStoreId]);
 
   return (
     <div className="pos-counter-page pb-4">
@@ -313,10 +405,39 @@ export default function PosCounter() {
         <div>
           <h1>POS Counter</h1>
           <p>
-            Point of Sale counter terminal for <strong>Admin Bakery Products</strong> only.
+            Point of Sale counter terminal for <strong>{activeStoreName}</strong>.
           </p>
         </div>
         <div className="d-flex align-items-center gap-2 flex-wrap">
+          {/* Admin Branch Switcher */}
+          {isAdmin && (
+            <div className="d-flex align-items-center gap-2 bg-white px-3 py-1.5 rounded-3 border shadow-sm">
+              <Store size={16} className="text-primary flex-shrink-0" />
+              <span className="text-muted small fw-medium text-nowrap">Active Branch:</span>
+              <select
+                className="form-select form-select-sm border-0 bg-transparent fw-semibold text-dark shadow-none p-0 pe-4"
+                style={{ cursor: "pointer", width: "auto" }}
+                value={selectedStoreId}
+                onChange={(e) => handleStoreChange(e.target.value)}
+              >
+                <option value="admin">🏢 Main Bakery (Head Office)</option>
+                {storesList.map((st) => (
+                  <option key={st.id} value={st.id}>
+                    🏪 {st.name} {st.city ? `(${st.city})` : ""}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {/* Store Owner Branch Fixed Badge */}
+          {isStoreOwner && (
+            <div className="d-flex align-items-center gap-2 bg-primary bg-opacity-10 text-primary px-3 py-1.5 rounded-3 border border-primary border-opacity-25 fw-semibold small">
+              <Store size={16} />
+              <span>{activeStoreName} (Branch POS)</span>
+            </div>
+          )}
+
           <Button
             variant="outline"
             onClick={() => setIsHistoryModalOpen(true)}
@@ -360,7 +481,7 @@ export default function PosCounter() {
               <div className="row g-3 align-items-center">
                 <div className="col-12 col-md-6">
                   <SearchInput
-                    placeholder="Search Admin products..."
+                    placeholder="Search products..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                   />
@@ -379,7 +500,7 @@ export default function PosCounter() {
                       style={{ fontSize: "12px", border: "none" }}
                       onClick={() => setProductTypeFilter("ALL")}
                     >
-                      All Admin Items ({allProducts.filter((p) => p.store_id == null).length})
+                      All Items ({allProducts.length})
                     </button>
                     <button
                       type="button"
@@ -452,14 +573,14 @@ export default function PosCounter() {
               {isLoadingProducts ? (
                 <div className="text-center py-5 text-muted">
                   <div className="spinner-border spinner-border-sm me-2" role="status" />
-                  Loading Admin products...
+                  Loading products...
                 </div>
               ) : filteredProducts.length === 0 ? (
                 <div className="text-center py-5">
                   <Package size={40} className="text-muted opacity-40 mb-2" />
-                  <h6 className="fw-semibold text-secondary">No Admin products found</h6>
+                  <h6 className="fw-semibold text-secondary">No products found</h6>
                   <p className="text-muted small mb-3">
-                    {searchQuery
+                    {debouncedSearchQuery
                       ? "No products matching your search term."
                       : "No products available in this category."}
                   </p>
@@ -666,21 +787,34 @@ export default function PosCounter() {
 
         {/* Right Side: Register / Billing Cart */}
         <div
-          className={`col-12 col-lg-4 ${
+          className={
             mobileCartOpen
-              ? "d-block position-fixed top-0 start-0 w-100 h-100 z-3 p-3 bg-dark bg-opacity-50"
-              : "d-none d-lg-block"
-          }`}
+              ? "d-flex align-items-center justify-content-center position-fixed top-0 start-0 w-100 h-100 p-2 p-sm-3 bg-dark bg-opacity-75 overflow-y-auto"
+              : "col-12 col-lg-4 d-none d-lg-block"
+          }
+          style={
+            mobileCartOpen
+              ? { zIndex: 1055, backdropFilter: "blur(4px)" }
+              : undefined
+          }
+          onClick={(e) => {
+            if (mobileCartOpen && e.target === e.currentTarget) {
+              setMobileCartOpen(false);
+            }
+          }}
         >
           <div
-            className="card shadow-xs border h-100 d-flex flex-column overflow-hidden bg-white mx-auto"
+            className="card shadow-lg border d-flex flex-column bg-white mx-auto rounded-3"
             style={{
-              maxWidth: mobileCartOpen ? "440px" : "100%",
-              maxHeight: "calc(100vh - 120px)",
+              width: "100%",
+              maxWidth: mobileCartOpen ? "480px" : "100%",
+              maxHeight: mobileCartOpen ? "min(94vh, 780px)" : "calc(100vh - 120px)",
+              height: mobileCartOpen ? "auto" : "100%",
+              overflow: "hidden",
             }}
           >
             {/* Header */}
-            <div className="p-3 border-bottom bg-light d-flex align-items-center justify-content-between">
+            <div className="p-3 border-bottom bg-light d-flex align-items-center justify-content-between flex-shrink-0">
               <div className="d-flex align-items-center gap-2">
                 <Receipt size={18} className="text-primary" />
                 <h6 className="mb-0 fw-bold fs-6">Current Register Bill</h6>
@@ -708,7 +842,7 @@ export default function PosCounter() {
             </div>
 
             {/* Customer Details Strip */}
-            <div className="px-3 py-2 border-bottom bg-white">
+            <div className="px-3 py-2 border-bottom bg-white flex-shrink-0">
               <div className="row g-2">
                 <div className="col-7">
                   <div className="input-group input-group-sm">
@@ -748,7 +882,10 @@ export default function PosCounter() {
             {/* Items List */}
             <div
               className="p-3 overflow-y-auto flex-grow-1"
-              style={{ minHeight: "180px" }}
+              style={{
+                minHeight: "60px",
+                maxHeight: mobileCartOpen ? "220px" : "320px",
+              }}
             >
               {cartItems.length === 0 ? (
                 <div className="text-center py-5">
@@ -838,7 +975,12 @@ export default function PosCounter() {
             </div>
 
             {/* Calculations & Checkout */}
-            <div className="p-3 border-top bg-light">
+            <div
+              className="p-2.5 p-sm-3 border-top bg-light flex-shrink-0 overflow-y-auto"
+              style={{
+                maxHeight: mobileCartOpen ? "calc(100dvh - 220px)" : "none",
+              }}
+            >
               <div className="row g-2 mb-2">
                 <div className="col-7">
                   <div className="input-group input-group-sm">
@@ -991,7 +1133,7 @@ export default function PosCounter() {
               {/* Charge & Complete Sale Button */}
               <button
                 type="button"
-                className="btn btn-primary btn-lg w-100 rounded-3 mt-3 py-2.5 fw-bold shadow-xs d-flex align-items-center justify-content-center gap-2"
+                className="btn btn-primary btn-lg w-100 rounded-3 mt-2.5 mt-sm-3 py-2.5 fw-bold shadow-xs d-flex align-items-center justify-content-center gap-2"
                 disabled={isProcessingSale || cartItems.length === 0}
                 onClick={handleCompleteSale}
               >
@@ -1022,9 +1164,17 @@ export default function PosCounter() {
           setIsAddModalOpen(false);
           setProductToEdit(null);
         }}
+        storeId={isStoreOwner ? activeStoreId : (selectedStoreId === "admin" ? null : selectedStoreId)}
+        storeName={activeStoreName}
         productToEdit={productToEdit}
-        onSuccess={() => {
-          refetchProducts();
+        onSuccess={async () => {
+          try {
+            if (refetchProducts) {
+              await refetchProducts();
+            }
+          } catch (e) {
+            console.warn("Product refetch notice:", e);
+          }
         }}
       />
 
@@ -1032,6 +1182,8 @@ export default function PosCounter() {
       <PosManageProductsModal
         isOpen={isManageModalOpen}
         onClose={() => setIsManageModalOpen(false)}
+        storeId={isStoreOwner ? activeStoreId : (selectedStoreId === "admin" ? null : selectedStoreId)}
+        storeName={activeStoreName}
         allProducts={allProducts}
         onAddNew={() => {
           setIsManageModalOpen(false);
@@ -1049,6 +1201,8 @@ export default function PosCounter() {
       <PosSalesHistoryModal
         isOpen={isHistoryModalOpen}
         onClose={() => setIsHistoryModalOpen(false)}
+        storeId={isStoreOwner ? activeStoreId : (selectedStoreId === "admin" ? "admin" : selectedStoreId)}
+        storeName={activeStoreName}
         allProducts={allProducts}
         onSaleUpdated={() => {
           refetchProducts();
