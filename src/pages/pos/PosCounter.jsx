@@ -77,15 +77,15 @@ export default function PosCounter() {
     return found ? found.name : "Branch Store";
   }, [isStoreOwner, myStore?.name, selectedStoreId, storesList]);
 
-  // Strict POS query params - includes global bakery products and branch store items
+  // Strict POS query params - strictly store's own items for store owner POS counter
   const posQueryParams = useMemo(() => {
     if (isStoreOwner) {
-      return { limit: 300, include_admin: true, store_id: activeStoreId || undefined };
+      return { limit: 300, include_admin: false, store_only: true, store_id: activeStoreId || undefined };
     }
     if (selectedStoreId === "admin") {
       return { limit: 300, admin_only: true };
     }
-    return { limit: 300, include_admin: true, store_id: selectedStoreId };
+    return { limit: 300, include_admin: false, store_only: true, store_id: selectedStoreId };
   }, [isStoreOwner, activeStoreId, selectedStoreId]);
 
   const {
@@ -160,13 +160,16 @@ export default function PosCounter() {
     let result = (allProducts || []).filter((p) => {
       if (isStoreOwner) {
         if (activeStoreId) {
-          return p.store_id == null || Number(p.store_id) === Number(activeStoreId);
+          // Store Owner POS: Strictly ONLY products belonging to this store (NO admin products)
+          return Number(p.store_id) === Number(activeStoreId);
         }
-        return true;
+        return p.store_id != null;
       }
       if (isAdmin && selectedStoreId !== "admin") {
-        return p.store_id == null || Number(p.store_id) === Number(selectedStoreId);
+        // Admin viewing a specific branch store POS: Show only that store's products
+        return Number(p.store_id) === Number(selectedStoreId);
       }
+      // Admin POS at Main Bakery: Show Admin's products (store_id is null)
       return p.store_id == null;
     });
 
