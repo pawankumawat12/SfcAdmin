@@ -10,10 +10,11 @@ export default function Pagination({
   itemLabel = "records",
   className = "",
 }) {
-  if (!total || totalPages <= 1) return null;
+  if (totalPages <= 1) return null;
 
-  const startRecord = Math.min((page - 1) * limit + 1, total);
-  const endRecord = Math.min(page * limit, total);
+  const displayTotal = total > 0 ? total : totalPages * limit;
+  const startRecord = Math.min((page - 1) * limit + 1, displayTotal);
+  const endRecord = Math.min(page * limit, displayTotal);
 
   // Generate page numbers with smart ellipsis
   const getPageNumbers = () => {
@@ -64,9 +65,18 @@ export default function Pagination({
       }}
     >
       <div style={{ color: "#6b7280", fontWeight: 500 }}>
-        Showing <strong style={{ color: "#111827" }}>{startRecord}</strong>–
-        <strong style={{ color: "#111827" }}>{endRecord}</strong> of{" "}
-        <strong style={{ color: "#111827" }}>{total}</strong> {itemLabel}
+        {total > 0 ? (
+          <>
+            Showing <strong style={{ color: "#111827" }}>{startRecord}</strong>–
+            <strong style={{ color: "#111827" }}>{endRecord}</strong> of{" "}
+            <strong style={{ color: "#111827" }}>{total}</strong> {itemLabel}
+          </>
+        ) : (
+          <>
+            Page <strong style={{ color: "#111827" }}>{page}</strong> of{" "}
+            <strong style={{ color: "#111827" }}>{totalPages}</strong>
+          </>
+        )}
       </div>
 
       <div

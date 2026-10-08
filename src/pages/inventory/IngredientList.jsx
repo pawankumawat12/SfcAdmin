@@ -67,15 +67,21 @@ export default function IngredientList() {
   const [deleteIngredient, { isLoading: isDeleting }] = useDeleteIngredientMutation();
 
   // Metrics for stats row
-  const totalItems = pagination?.total || ingredients.length;
-  const lowStockCount = ingredients.filter(
-    (i) => Number(i.current_stock) <= Number(i.min_stock_threshold) && Number(i.current_stock) > 0
-  ).length;
-  const outOfStockCount = ingredients.filter((i) => Number(i.current_stock) <= 0).length;
-  const totalStockValue = ingredients.reduce(
-    (acc, i) => acc + (Number(i.current_stock) || 0) * (Number(i.purchase_price) || 0),
-    0
-  );
+  const totalItems = response?.summary?.totalItems ?? (pagination?.total || ingredients.length);
+  const lowStockCount =
+    response?.summary?.lowStockCount ??
+    ingredients.filter(
+      (i) => Number(i.current_stock) <= Number(i.min_stock_threshold) && Number(i.current_stock) > 0
+    ).length;
+  const outOfStockCount =
+    response?.summary?.outOfStockCount ??
+    ingredients.filter((i) => Number(i.current_stock) <= 0).length;
+  const totalStockValue =
+    response?.summary?.totalStockValue ??
+    ingredients.reduce(
+      (acc, i) => acc + (Number(i.current_stock) || 0) * (Number(i.purchase_price) || 0),
+      0
+    );
 
   // Extract unique categories for filter
   const categories = Array.from(new Set(ingredients.map((i) => i.category).filter(Boolean)));
@@ -173,7 +179,7 @@ export default function IngredientList() {
     },
     {
       key: "min_stock_threshold",
-      label: "NOTIFICATION LIMIT",
+      label: "LOW STOCK LIMIT",
       render: (val, row) => (
         <span style={{ fontFamily: "monospace", fontSize: "12px", color: "var(--muted)" }}>
           {val} {row.base_unit}
@@ -401,7 +407,10 @@ export default function IngredientList() {
           <Pagination
             page={pagination.page}
             totalPages={pagination.totalPages}
+            total={pagination.total}
+            limit={pagination.limit || limit}
             onPageChange={setPage}
+            itemLabel="raw materials"
           />
         )}
       </div>

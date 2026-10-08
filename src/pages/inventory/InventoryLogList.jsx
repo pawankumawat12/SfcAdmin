@@ -266,7 +266,10 @@ export default function InventoryLogList() {
           <Pagination
             page={pagination.page}
             totalPages={pagination.totalPages}
+            total={pagination.total}
+            limit={pagination.limit}
             onPageChange={setPage}
+            itemLabel="logs"
           />
         )}
       </div>
