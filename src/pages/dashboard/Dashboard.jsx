@@ -570,6 +570,7 @@ export default function Dashboard() {
               { id: "weekly", label: "7 Days" },
               { id: "monthly", label: "30 Days" },
               { id: "yearly", label: "12 Months" },
+              { id: "all", label: "All Time" },
             ].map((tf) => (
               <button
                 key={tf.id}
@@ -1027,7 +1028,7 @@ export default function Dashboard() {
                 <span style={{ fontSize: "11px", fontWeight: 800, color: "#1e40af", textTransform: "uppercase" }}>
                   Branch Stores Sales
                 </span>
-                <span
+                {/* <span
                   style={{
                     background: "#eff6ff",
                     color: "#2563eb",
@@ -1038,7 +1039,7 @@ export default function Dashboard() {
                   }}
                 >
                   Online App Orders
-                </span>
+                </span> */}
               </div>
               <div style={{ marginTop: "10px" }}>
                 <div style={{ fontSize: "24px", fontWeight: 900, color: "#1d4ed8" }}>
@@ -1267,9 +1268,9 @@ export default function Dashboard() {
             }}
           >
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <span style={{ fontSize: "12px", fontWeight: 700, color: "#1d4ed8" }}>
+              {/* <span style={{ fontSize: "12px", fontWeight: 700, color: "#1d4ed8" }}>
                 Online App Orders
-              </span>
+              </span> */}
               <div
                 style={{
                   width: "34px",
