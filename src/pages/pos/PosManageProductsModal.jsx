@@ -48,7 +48,8 @@ export default function PosManageProductsModal({
     return posOnlyItems.filter(
       (item) =>
         item.name?.toLowerCase().includes(query) ||
-        item.category_name?.toLowerCase().includes(query)
+        item.category_name?.toLowerCase().includes(query) ||
+        item.barcode?.toLowerCase().includes(query)
     );
   }, [posOnlyItems, debouncedSearchTerm]);
 
@@ -73,6 +74,7 @@ export default function PosManageProductsModal({
         categoryId: item.category_id,
         price: item.price,
         stock: item.stock,
+        barcode: item.barcode || "",
         status: nextActive ? "Active" : "Inactive",
         is_pos_only: true,
         storeId: storeId ? Number(storeId) : undefined,
@@ -255,16 +257,30 @@ export default function PosManageProductsModal({
                             <div className="fw-semibold text-dark fs-6 mb-0.5">
                               {item.name}
                             </div>
-                            <span
-                              className="badge rounded-pill bg-purple-subtle text-purple fw-medium"
-                              style={{
-                                fontSize: "10px",
-                                backgroundColor: "#ede9fe",
-                                color: "#6b21a8",
-                              }}
-                            >
-                              POS Exclusive
-                            </span>
+                            <div className="d-flex align-items-center gap-1.5 flex-wrap">
+                              <span
+                                className="badge rounded-pill bg-purple-subtle text-purple fw-medium"
+                                style={{
+                                  fontSize: "10px",
+                                  backgroundColor: "#ede9fe",
+                                  color: "#6b21a8",
+                                }}
+                              >
+                                POS Exclusive
+                              </span>
+                              {item.barcode && (
+                                <span
+                                  className="badge rounded-pill fw-semibold"
+                                  style={{
+                                    fontSize: "10px",
+                                    backgroundColor: "#dcfce7",
+                                    color: "#166534",
+                                  }}
+                                >
+                                  QR: {item.barcode}
+                                </span>
+                              )}
+                            </div>
                           </td>
                           <td>
                             <span className="badge bg-light text-secondary border fw-normal">

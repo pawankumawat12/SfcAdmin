@@ -35,10 +35,11 @@ import useDebouncedValue from "../../utils/useDebouncedValue";
 import PosProductModal from "./PosProductModal";
 import PosManageProductsModal from "./PosManageProductsModal";
 import PosSalesHistoryModal from "./PosSalesHistoryModal";
+import { PosQrStockModal, playScanBeep } from "./PosQrStockModal.jsx";
 
 export default function PosCounter() {
   const user = useSelector((state) => state.auth?.user);
-  const isAdmin = user?.role === "admin";
+  const isAdmin = user?.role === "admin" || user?.role === "manager";
   const isStoreOwner = user?.role === "store_owner";
 
   // If Store Owner, fetch own store
@@ -122,6 +123,8 @@ export default function PosCounter() {
   const [productToEdit, setProductToEdit] = useState(null);
   const [isManageModalOpen, setIsManageModalOpen] = useState(false);
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
+  const [isQrScannerOpen, setIsQrScannerOpen] = useState(false);
+  const [scannedProductForPopup, setScannedProductForPopup] = useState(null);
 
   const [mobileCartOpen, setMobileCartOpen] = useState(false);
 
@@ -156,22 +159,79 @@ export default function PosCounter() {
   const [createPosSale, { isLoading: isProcessingSale }] =
     useCreatePosSaleMutation();
 
-  const filteredProducts = useMemo(() => {
-    let result = (allProducts || []).filter((p) => {
+  const storeScopedProducts = useMemo(() => {
+    return (allProducts || []).filter((p) => {
       if (isStoreOwner) {
         if (activeStoreId) {
-          // Store Owner POS: Strictly ONLY products belonging to this store (NO admin products)
           return Number(p.store_id) === Number(activeStoreId);
         }
         return p.store_id != null;
       }
       if (isAdmin && selectedStoreId !== "admin") {
-        // Admin viewing a specific branch store POS: Show only that store's products
         return Number(p.store_id) === Number(selectedStoreId);
       }
-      // Admin POS at Main Bakery: Show Admin's products (store_id is null)
       return p.store_id == null;
     });
+  }, [allProducts, isStoreOwner, isAdmin, selectedStoreId, activeStoreId]);
+
+  // Global USB / Wireless Barcode & QR Scanner listener on POS Counter
+  useEffect(() => {
+    if (isAddModalOpen || isManageModalOpen || isHistoryModalOpen || isQrScannerOpen) {
+      return;
+    }
+
+    let buffer = "";
+    let lastKeyTime = 0;
+
+    const handleGlobalScannerKey = (e) => {
+      const tag = e.target?.tagName?.toLowerCase();
+      if (tag === "input" || tag === "textarea" || tag === "select" || e.target?.isContentEditable) {
+        return;
+      }
+
+      const now = Date.now();
+      if (now - lastKeyTime > 120) {
+        buffer = "";
+      }
+      lastKeyTime = now;
+
+      if (e.key === "Enter") {
+        if (buffer.trim().length >= 3) {
+          const code = buffer.trim();
+          buffer = "";
+          const found = storeScopedProducts.find(
+            (p) => p.barcode && String(p.barcode).trim().toLowerCase() === code.toLowerCase()
+          );
+          if (found) {
+            e.preventDefault();
+            playScanBeep();
+            setScannedProductForPopup(found);
+            setIsQrScannerOpen(true);
+          } else {
+            toast.error(`No product found for scanned QR/Barcode: ${code}`);
+          }
+        }
+        buffer = "";
+        return;
+      }
+
+      if (e.key && e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey) {
+        buffer += e.key;
+      }
+    };
+
+    window.addEventListener("keydown", handleGlobalScannerKey);
+    return () => window.removeEventListener("keydown", handleGlobalScannerKey);
+  }, [
+    isAddModalOpen,
+    isManageModalOpen,
+    isHistoryModalOpen,
+    isQrScannerOpen,
+    storeScopedProducts,
+  ]);
+
+  const filteredProducts = useMemo(() => {
+    let result = [...storeScopedProducts];
 
     // Filter by type
     if (productTypeFilter === "POS_ONLY") {
@@ -196,12 +256,13 @@ export default function PosCounter() {
         (p) =>
           p.name?.toLowerCase().includes(q) ||
           p.category_name?.toLowerCase().includes(q) ||
+          p.barcode?.toLowerCase().includes(q) ||
           String(p.price).includes(q)
       );
     }
 
     return result;
-  }, [allProducts, isStoreOwner, isAdmin, selectedStoreId, activeStoreId, productTypeFilter, selectedCategory, debouncedSearchQuery]);
+  }, [storeScopedProducts, productTypeFilter, selectedCategory, debouncedSearchQuery]);
 
   // Cart Calculations
   const subtotal = useMemo(() => {
@@ -441,6 +502,21 @@ export default function PosCounter() {
             </div>
           )}
 
+          <Button
+            variant="outline"
+            onClick={() => {
+              setScannedProductForPopup(null);
+              setIsQrScannerOpen(true);
+            }}
+            style={{
+              borderColor: "#16a34a",
+              background: "#f0fdf4",
+              color: "#166534",
+              fontWeight: 700,
+            }}
+          >
+            <QrCode size={16} /> Scan &amp; Minus Stock
+          </Button>
           <Button
             variant="outline"
             onClick={() => setIsHistoryModalOpen(true)}
@@ -1209,6 +1285,57 @@ export default function PosCounter() {
         allProducts={allProducts}
         onSaleUpdated={() => {
           refetchProducts();
+        }}
+      />
+
+      {/* POS QR / Barcode Stock Scanner Popup */}
+      <PosQrStockModal
+        isOpen={isQrScannerOpen}
+        onClose={() => {
+          setIsQrScannerOpen(false);
+          setScannedProductForPopup(null);
+        }}
+        allProducts={storeScopedProducts}
+        initialScannedProduct={scannedProductForPopup}
+        onStockUpdated={async () => {
+          await refetchProducts();
+        }}
+        onAddToPosBill={(product, qty) => {
+          const isMadeToOrder = product.availability_type === "MADE_TO_ORDER";
+          const baseStock = Number(product.stock) || 0;
+          const existing = cartItems.find((item) => item.id === product.id);
+          const inCartQty = existing ? existing.quantity : 0;
+          const addQty = Math.max(1, Number(qty) || 1);
+
+          if (!isMadeToOrder && inCartQty + addQty > baseStock) {
+            toast.error(`"${product.name}" has only ${baseStock} units available in stock.`);
+            return;
+          }
+
+          setCartItems((prev) => {
+            if (existing) {
+              return prev.map((item) =>
+                item.id === product.id
+                  ? { ...item, quantity: item.quantity + addQty }
+                  : item
+              );
+            }
+            return [
+              ...prev,
+              {
+                id: product.id,
+                name: product.name,
+                price: Number(product.price),
+                stock: baseStock,
+                availability_type: product.availability_type,
+                images: product.images,
+                category_name: product.category_name,
+                is_pos_only: product.is_pos_only,
+                quantity: addQty,
+              },
+            ];
+          });
+          toast.success(`Added ${addQty} × "${product.name}" to POS Bill`);
         }}
       />
     </div>

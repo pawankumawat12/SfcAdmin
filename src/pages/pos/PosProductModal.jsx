@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { X, Upload, Package, DollarSign, Layers, CheckCircle2, AlertCircle, Sparkles, Trash2 } from "lucide-react";
+import { X, Upload, Package, DollarSign, Layers, CheckCircle2, AlertCircle, Sparkles, Trash2, QrCode, Camera } from "lucide-react";
 import toast from "react-hot-toast";
 import {
   useCreateProductMutation,
@@ -7,12 +7,15 @@ import {
   useGetProductCategoriesQuery,
 } from "../../services/productApi";
 import toAssetUrl from "../../utils/assetUrl";
+import { InlineCameraBarcodeScanner } from "./PosQrStockModal.jsx";
 
 export default function PosProductModal({ isOpen, onClose, productToEdit, onSuccess, storeId, storeName }) {
   const [name, setName] = useState("");
   const [categoryId, setCategoryId] = useState("");
   const [price, setPrice] = useState("");
   const [stock, setStock] = useState("999");
+  const [barcode, setBarcode] = useState("");
+  const [showBarcodeScanner, setShowBarcodeScanner] = useState(false);
   const [description, setDescription] = useState("");
   const [status, setStatus] = useState("Active");
   const [imageFile, setImageFile] = useState(null);
@@ -30,6 +33,8 @@ export default function PosProductModal({ isOpen, onClose, productToEdit, onSucc
     setCategoryId(categories.length > 0 ? String(categories[0].id) : "");
     setPrice("");
     setStock("999");
+    setBarcode("");
+    setShowBarcodeScanner(false);
     setDescription("");
     setStatus("Active");
     setImageFile(null);
@@ -44,6 +49,8 @@ export default function PosProductModal({ isOpen, onClose, productToEdit, onSucc
       setCategoryId(productToEdit.category_id || productToEdit.categoryId || "");
       setPrice(productToEdit.price !== undefined ? String(productToEdit.price) : "");
       setStock(productToEdit.stock !== undefined ? String(productToEdit.stock) : "999");
+      setBarcode(productToEdit.barcode || "");
+      setShowBarcodeScanner(false);
       setDescription(productToEdit.description || "");
       setStatus(productToEdit.is_active ? "Active" : "Inactive");
 
@@ -121,6 +128,7 @@ export default function PosProductModal({ isOpen, onClose, productToEdit, onSucc
           categoryId: Number(categoryId),
           price: Number(price),
           stock: Number(stock) || 0,
+          barcode: barcode.trim(),
           description: description.trim(),
           status,
           availabilityType: "IN_STOCK",
@@ -138,6 +146,7 @@ export default function PosProductModal({ isOpen, onClose, productToEdit, onSucc
           categoryId: Number(categoryId),
           price: Number(price),
           stock: Number(stock) || 0,
+          barcode: barcode.trim(),
           description: description.trim(),
           status,
           availabilityType: "IN_STOCK",
@@ -313,6 +322,95 @@ export default function PosProductModal({ isOpen, onClose, productToEdit, onSucc
                 <option value="Active">Active (Available on POS)</option>
                 <option value="Inactive">Inactive (Disabled)</option>
               </select>
+            </div>
+
+            {/* Product Packet QR / Barcode (Strictly Scan-Only) */}
+            <div className="col-12">
+              <label className="form-label small fw-semibold text-secondary mb-1">
+                Product QR / Barcode{" "}
+                <span className="text-muted fw-normal">
+                  (Scan existing packet QR/Barcode for instant stock deduction)
+                </span>
+              </label>
+              <div className="d-flex align-items-center justify-content-between gap-2 p-2.5 rounded-3 border bg-light">
+                <div className="d-flex align-items-center gap-2 min-w-0">
+                  <div
+                    className={`rounded-2 d-flex align-items-center justify-content-center flex-shrink-0 ${
+                      barcode ? "bg-success-subtle text-success" : "bg-white text-secondary border"
+                    }`}
+                    style={{ width: "34px", height: "34px" }}
+                  >
+                    <QrCode size={17} />
+                  </div>
+                  <div className="min-w-0">
+                    {barcode ? (
+                      <>
+                        <div className="fw-bold text-success text-truncate" style={{ fontSize: "12.5px" }}>
+                          ✓ Scanned Code: {barcode}
+                        </div>
+                        <div className="text-muted" style={{ fontSize: "10.5px" }}>
+                          Packet QR / Barcode linked via scanner
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="fw-semibold text-dark" style={{ fontSize: "12.5px" }}>
+                          No Packet QR / Barcode Scanned
+                        </div>
+                        <div className="text-muted" style={{ fontSize: "10.5px" }}>
+                          Click &quot;Scan Packet QR&quot; to scan via Camera or USB Scanner
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                <div className="d-flex align-items-center gap-1.5 flex-shrink-0">
+                  {barcode && (
+                    <button
+                      type="button"
+                      className="btn btn-sm btn-outline-danger py-1 px-2"
+                      onClick={() => setBarcode("")}
+                      disabled={isSaving}
+                      title="Remove scanned QR/Barcode"
+                      style={{ fontSize: "11px" }}
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    className={`btn btn-sm fw-semibold d-inline-flex align-items-center gap-1.5 px-3 ${
+                      showBarcodeScanner ? "btn-danger" : "btn-success"
+                    }`}
+                    onClick={() => setShowBarcodeScanner((prev) => !prev)}
+                    disabled={isSaving}
+                  >
+                    <Camera size={14} />
+                    <span>
+                      {showBarcodeScanner
+                        ? "Close Scanner"
+                        : barcode
+                        ? "Re-Scan QR"
+                        : "Scan Packet QR"}
+                    </span>
+                  </button>
+                </div>
+              </div>
+
+              {showBarcodeScanner && (
+                <div className="mt-2">
+                  <InlineCameraBarcodeScanner
+                    active={showBarcodeScanner}
+                    autoStartCamera={true}
+                    onDetected={(code) => {
+                      setBarcode(code);
+                      setShowBarcodeScanner(false);
+                      toast.success(`Packet QR/Barcode scanned: ${code}`);
+                    }}
+                  />
+                </div>
+              )}
             </div>
 
             {/* Optional Image */}

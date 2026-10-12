@@ -90,6 +90,10 @@ export const productApi = baseApi.injectEndpoints({
         if (data.is_pos_only !== undefined || data.isPosOnly !== undefined) {
           formData.append("is_pos_only", String(data.is_pos_only ?? data.isPosOnly));
         }
+
+        if (data.barcode !== undefined) {
+          formData.append("barcode", String(data.barcode ?? ""));
+        }
     
         // VERY IMPORTANT
         formData.append(
@@ -109,6 +113,17 @@ export const productApi = baseApi.injectEndpoints({
           method: "PUT",
           body: formData,
         }},
+      invalidatesTags: (_result, _error, { id }) => [
+        "Product",
+        { type: "Product", id },
+      ],
+    }),
+    adjustProductStock: build.mutation({
+      query: ({ id, mode = "minus", quantity = 1 }) => ({
+        url: `/products/${id}/adjust-stock`,
+        method: "PATCH",
+        body: { mode, quantity },
+      }),
       invalidatesTags: (_result, _error, { id }) => [
         "Product",
         { type: "Product", id },
@@ -144,7 +159,9 @@ export const {
   useGetProductCategoriesQuery,
   useCreateProductMutation,
   useUpdateProductMutation,
+  useAdjustProductStockMutation,
   useDeleteProductMutation,
   useBulkUpdateProductStatusMutation,
   useBulkDeleteProductsMutation,
 } = productApi;
+
