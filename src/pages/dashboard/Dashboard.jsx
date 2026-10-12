@@ -127,12 +127,14 @@ export default function Dashboard() {
     socket.on("admin_order_updated", handleUpdate);
     socket.on("admin_order_status_updated", handleUpdate);
     socket.on("admin_new_order", handleUpdate);
+    socket.on("new_order", handleUpdate);
     socket.on("admin_order_cancelled", handleUpdate);
 
     return () => {
       socket.off("admin_order_updated", handleUpdate);
       socket.off("admin_order_status_updated", handleUpdate);
       socket.off("admin_new_order", handleUpdate);
+      socket.off("new_order", handleUpdate);
       socket.off("admin_order_cancelled", handleUpdate);
     };
   }, [throttledRefetch]);

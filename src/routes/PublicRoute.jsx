@@ -1,9 +1,10 @@
 import { useEffect } from "react";
 import { Navigate, Outlet } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
-import { setUser, signOut } from "../context/authSlice";
+import { setUser } from "../context/authSlice";
 import { useGetMeQuery } from "../services/authApi";
 import BrandSplashScreen from "../components/common/BrandSplashScreen";
+import { getFirstAllowedRouteForManager } from "../utils/managerPermissions";
 
 export default function PublicRoute() {
   const dispatch = useDispatch();
@@ -34,9 +35,17 @@ export default function PublicRoute() {
     return <BrandSplashScreen message="Verifying session..." />;
   }
 
-  // If already logged in as admin, redirect to Dashboard
-  if (user?.role === "admin" || data?.user?.role === "admin") {
+  const effectiveUser = user || data?.user;
+  if (effectiveUser?.role === "admin" || effectiveUser?.role === "store_owner") {
     return <Navigate to="/" replace />;
+  }
+  if (effectiveUser?.role === "manager") {
+    return (
+      <Navigate
+        to={getFirstAllowedRouteForManager(effectiveUser.permissions)}
+        replace
+      />
+    );
   }
 
   return <Outlet />;

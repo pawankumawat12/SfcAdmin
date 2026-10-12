@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
 import toast from "react-hot-toast";
-import { signOut } from "../context/authSlice";
+import { signOut, setUser } from "../context/authSlice";
 import { useLogoutMutation } from "../services/authApi";
 import ConfirmDialog from "../components/ui/ConfirmDialog";
 import Button from "../components/ui/Button";
@@ -40,6 +40,7 @@ import {
   Film,
   Code,
   Calculator,
+  ShieldCheck,
 } from "lucide-react";
 import { baseApi } from "../services/baseApi";
 import {
@@ -60,8 +61,9 @@ import { useShopStatus } from "../utils/useShopStatus";
 import WhatsAppModal from "../modals/WhatsAppModal";
 import { WhatsAppIcon } from "../utils/whatsappOrder";
 import { useGetWhatsAppStatusQuery } from "../services/whatsappApi";
+import { normalizePermissionsArray } from "../utils/managerPermissions";
 
-const getNavigationItems = (role) => {
+const getNavigationItems = (role, permissions = []) => {
   if (role === "store_owner") {
     return [
       { type: "link", label: "Dashboard", to: "/", icon: LayoutDashboard },
@@ -75,18 +77,6 @@ const getNavigationItems = (role) => {
           { label: "My Products", to: "/products", icon: Package },
         ],
       },
-      // {
-      //   type: "group",
-      //   id: "inventory",
-      //   label: "Raw Materials & BOM",
-      //   icon: Boxes,
-      //   children: [
-      //     { label: "Raw Materials", to: "/inventory/ingredients", icon: Boxes },
-      //     { label: "Product Recipes", to: "/inventory/recipes", icon: UtensilsCrossed },
-      //     { label: "Suppliers & Vendors", to: "/inventory/suppliers", icon: Truck },
-      //     { label: "Stock Movement Logs", to: "/inventory/logs", icon: History },
-      //   ],
-      // },
       {
         type: "group",
         id: "sales",
@@ -117,19 +107,18 @@ const getNavigationItems = (role) => {
     ];
   }
 
-  // Administrator navigation
-  return [
-    { type: "link", label: "Dashboard", to: "/", icon: LayoutDashboard },
-    { type: "link", label: "POS Counter", to: "/pos", icon: Calculator },
-    
+  // Administrator & Manager navigation
+  const allAdminItems = [
+    { type: "link", label: "Dashboard", to: "/", icon: LayoutDashboard, permissionKey: "dashboard" },
+    { type: "link", label: "POS Counter", to: "/pos", icon: Calculator, permissionKey: "pos" },
     {
       type: "group",
       id: "catalog",
       label: "Menu & Catalog",
       icon: Package,
       children: [
-        { label: "Products", to: "/products", icon: Package },
-        { label: "Categories", to: "/categories", icon: Tags },
+        { label: "Products", to: "/products", icon: Package, permissionKey: "products" },
+        { label: "Categories", to: "/categories", icon: Tags, permissionKey: "categories" },
       ],
     },
     {
@@ -138,8 +127,8 @@ const getNavigationItems = (role) => {
       label: "Orders & Deals",
       icon: ShoppingBag,
       children: [
-        { label: "All Orders", to: "/orders", icon: ShoppingBag },
-        { label: "Offers & Deals", to: "/offers", icon: BadgePercent },
+        { label: "All Orders", to: "/orders", icon: ShoppingBag, permissionKey: "orders" },
+        { label: "Offers & Deals", to: "/offers", icon: BadgePercent, permissionKey: "offers" },
       ],
     },
     {
@@ -148,7 +137,7 @@ const getNavigationItems = (role) => {
       label: "Branches & Owners",
       icon: Store,
       children: [
-        { label: "Stores & Partners", to: "/stores", icon: Store },
+        { label: "Stores & Partners", to: "/stores", icon: Store, permissionKey: "stores" },
       ],
     },
     {
@@ -157,10 +146,10 @@ const getNavigationItems = (role) => {
       label: "Raw Materials & BOM",
       icon: Boxes,
       children: [
-        { label: "Raw Materials", to: "/inventory/ingredients", icon: Boxes },
-        { label: "Product Recipes", to: "/inventory/recipes", icon: UtensilsCrossed },
-        { label: "Suppliers & Vendors", to: "/inventory/suppliers", icon: Truck },
-        { label: "Stock Movement Logs", to: "/inventory/logs", icon: History },
+        { label: "Raw Materials", to: "/inventory/ingredients", icon: Boxes, permissionKey: "inventory_ingredients" },
+        { label: "Product Recipes", to: "/inventory/recipes", icon: UtensilsCrossed, permissionKey: "inventory_recipes" },
+        { label: "Suppliers & Vendors", to: "/inventory/suppliers", icon: Truck, permissionKey: "inventory_suppliers" },
+        { label: "Stock Movement Logs", to: "/inventory/logs", icon: History, permissionKey: "inventory_logs" },
       ],
     },
     {
@@ -169,11 +158,11 @@ const getNavigationItems = (role) => {
       label: "Storefront & Content",
       icon: SlidersHorizontal,
       children: [
-        { label: "Hero Sliders", to: "/hero-sliders", icon: SlidersHorizontal },
-        { label: "Why Choose Us", to: "/why-choose-us", icon: Sparkles },
-        { label: "Customer Love", to: "/testimonials", icon: Heart },
-        { label: "Reels & Videos", to: "/reels", icon: Film },
-        { label: "CMS Pages", to: "/cms-pages", icon: FileText },
+        { label: "Hero Sliders", to: "/hero-sliders", icon: SlidersHorizontal, permissionKey: "hero_sliders" },
+        { label: "Why Choose Us", to: "/why-choose-us", icon: Sparkles, permissionKey: "why_choose_us" },
+        { label: "Customer Love", to: "/testimonials", icon: Heart, permissionKey: "testimonials" },
+        { label: "Reels & Videos", to: "/reels", icon: Film, permissionKey: "reels" },
+        { label: "CMS Pages", to: "/cms-pages", icon: FileText, permissionKey: "cms_pages" },
       ],
     },
     {
@@ -182,9 +171,9 @@ const getNavigationItems = (role) => {
       label: "Customers & CRM",
       icon: Users,
       children: [
-        { label: "Customer Accounts", to: "/customers", icon: Users },
-        { label: "Customer Reviews", to: "/reviews", icon: Star },
-        { label: "Contact Messages", to: "/messages", icon: MessageSquare },
+        { label: "Customer Accounts", to: "/customers", icon: Users, permissionKey: "customers" },
+        { label: "Customer Reviews", to: "/reviews", icon: Star, permissionKey: "reviews" },
+        { label: "Contact Messages", to: "/messages", icon: MessageSquare, permissionKey: "messages" },
       ],
     },
     {
@@ -193,8 +182,8 @@ const getNavigationItems = (role) => {
       label: "Email Management",
       icon: Mail,
       children: [
-        { label: "Email Templates", to: "/email-templates", icon: FileText },
-        { label: "Email Logs", to: "/email-logs", icon: Mail },
+        { label: "Email Templates", to: "/email-templates", icon: FileText, permissionKey: "email_templates" },
+        { label: "Email Logs", to: "/email-logs", icon: Mail, permissionKey: "email_logs" },
       ],
     },
     {
@@ -203,17 +192,42 @@ const getNavigationItems = (role) => {
       label: "System & Settings",
       icon: Settings,
       children: [
-        { label: "General Settings", to: "/settings", icon: Settings },
-        { label: "Admin Profile", to: "/profile", icon: UserRound },
-        { label: "Favourites", to: "/favourites", icon: Heart },
+        { label: "Managers & Staff", to: "/managers", icon: ShieldCheck, superAdminOnly: true },
+        { label: "General Settings", to: "/settings", icon: Settings, permissionKey: "settings" },
+        { label: role === "manager" ? "My Profile" : "Admin Profile", to: "/profile", icon: UserRound, alwaysAllow: true },
+        { label: "Favourites", to: "/favourites", icon: Heart, permissionKey: "favourites" },
       ],
     },
   ];
+
+  if (role === "manager") {
+    const perms = normalizePermissionsArray(permissions);
+    return allAdminItems
+      .map((item) => {
+        if (item.type === "link") {
+          return perms.includes(item.permissionKey) ? item : null;
+        }
+        if (item.type === "group") {
+          const allowedChildren = (item.children || []).filter((child) => {
+            if (child.superAdminOnly) return false;
+            if (child.alwaysAllow) return true;
+            return perms.includes(child.permissionKey);
+          });
+          if (allowedChildren.length === 0) return null;
+          return { ...item, children: allowedChildren };
+        }
+        return null;
+      })
+      .filter(Boolean);
+  }
+
+  return allAdminItems;
 };
 
 const getPageTitle = (pathname) => {
   if (pathname === "/") return "Dashboard";
   if (pathname.startsWith("/pos")) return "POS Counter";
+  if (pathname.startsWith("/managers")) return "Managers & Staff Access";
   if (pathname.startsWith("/stores")) return "Store Branches & Owners";
   if (pathname.startsWith("/products/create")) return "Add Product";
   if (pathname.startsWith("/products") && pathname.includes("/edit")) return "Edit Product";
@@ -267,7 +281,7 @@ export default function AdminLayout() {
     pollingInterval: 30000,
   });
   const isWhatsAppConnected = Boolean(whatsappStatusData?.data?.isConnected);
-  const navigationItems = getNavigationItems(user?.role);
+  const navigationItems = getNavigationItems(user?.role, user?.permissions);
   const dispatch = useDispatch();
   const navigate = useNavigate();
   const [logoutRequest, { isLoading: isSigningOut }] = useLogoutMutation();
@@ -341,17 +355,41 @@ export default function AdminLayout() {
     const socket = getAdminSocket();
 
     const handleSessionRevoked = (payload) => {
-      if (payload?.reason !== "store_deleted") return;
+      if (
+        payload?.reason !== "store_deleted" &&
+        payload?.reason !== "manager_deactivated" &&
+        payload?.reason !== "manager_deleted"
+      ) {
+        return;
+      }
 
       localStorage.removeItem("accessToken");
       disconnectAdminSocket();
       dispatch(signOut());
       dispatch(baseApi.util.resetApiState());
-      toast.error(payload.message || "Your store access has been removed.");
+      toast.error(payload.message || "Your portal access has been removed.");
       navigate("/login", { replace: true });
     };
 
+    const handleManagerPermissionsUpdated = (payload) => {
+      if (user && user.role === "manager" && Array.isArray(payload?.permissions)) {
+        dispatch(
+          setUser({
+            ...user,
+            permissions: payload.permissions,
+          })
+        );
+        toast.success("Your sidebar access permissions were updated by Administrator.");
+      }
+    };
+
     const handleNewNotification = (notif) => {
+      if (isStoreOwner && notif?.role && notif.role !== "store_owner") {
+        return;
+      }
+      if (!isStoreOwner && notif?.role === "store_owner") {
+        return;
+      }
       console.log("[Socket.IO Admin] New notification received:", notif);
       refetchNotifs();
       refetchUnreadCount();
@@ -471,6 +509,7 @@ export default function AdminLayout() {
     socket.on("notification:unread_count", handleUnreadCount);
     socket.on("new_order", handleNewOrder);
     socket.on("session:revoked", handleSessionRevoked);
+    socket.on("manager:permissions_updated", handleManagerPermissionsUpdated);
     socket.on("branch_status_changed", handleBranchStatusChanged);
     socket.on("store_status_changed", handleStoreStatusChanged);
 
@@ -479,10 +518,11 @@ export default function AdminLayout() {
       socket.off("notification:unread_count", handleUnreadCount);
       socket.off("new_order", handleNewOrder);
       socket.off("session:revoked", handleSessionRevoked);
+      socket.off("manager:permissions_updated", handleManagerPermissionsUpdated);
       socket.off("branch_status_changed", handleBranchStatusChanged);
       socket.off("store_status_changed", handleStoreStatusChanged);
     };
-  }, [dispatch, navigate, refetchNotifs, refetchUnreadCount]);
+  }, [dispatch, navigate, refetchNotifs, refetchUnreadCount, isStoreOwner, user]);
 
   // Click outside to close notification panel & profile dropdown
   useEffect(() => {

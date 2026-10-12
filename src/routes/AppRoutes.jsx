@@ -42,6 +42,9 @@ import StoreProductList from "../pages/stores/StoreProductList";
 import StoreOrderList from "../pages/stores/StoreOrderList";
 import StoreSetPassword from "../pages/auth/StoreSetPassword";
 import StoreOwnerLocationSetup from "../pages/stores/StoreOwnerLocationSetup";
+import * as ManagerListModule from "../pages/managers/ManagerList.jsx";
+
+const ManagerList = ManagerListModule.default || ManagerListModule.ManagerList;
 
 export default function AppRoutes() {
   return (
@@ -90,6 +93,7 @@ export default function AppRoutes() {
           <Route path="inventory/suppliers" element={<SupplierList />} />
           <Route path="inventory/logs" element={<InventoryLogList />} />
           <Route path="favourites" element={<FavouriteList />} />
+          <Route path="managers" element={<ManagerList />} />
           <Route path="settings" element={<Settings />} />
           <Route path="store-location" element={<StoreOwnerLocationSetup />} />
           <Route path="profile" element={<Profile />} />

@@ -6,6 +6,7 @@ import toast from "react-hot-toast";
 import { LockKeyhole, Eye, EyeOff, RefreshCw, AlertCircle } from "lucide-react";
 import { useVerifySetupTokenQuery, useSetStorePasswordMutation } from "../../services/storeApi";
 import { setUser } from "../../context/authSlice";
+import { getFirstAllowedRouteForManager } from "../../utils/managerPermissions";
 import Button from "../../components/ui/Button";
 import Input from "../../components/ui/Input";
 
@@ -40,6 +41,10 @@ export default function StoreSetPassword() {
   });
 
   const passwordVal = watch("password");
+  const isManagerInvite = tokenData?.role === "manager";
+  const portalEyebrow = isManagerInvite
+    ? "SFC BAKERS • MANAGER PORTAL"
+    : "SFC BAKERS • STORE OWNER PORTAL";
 
   const onSubmit = async (values) => {
     setApiError("");
@@ -59,8 +64,12 @@ export default function StoreSetPassword() {
         );
       }
 
-      toast.success(res?.message || "Password set successfully! Welcome to your dashboard.");
-      navigate("/", { replace: true });
+      toast.success(res?.message || "Password set successfully! Welcome to your workspace.");
+      const targetRoute =
+        res?.user?.role === "manager"
+          ? getFirstAllowedRouteForManager(res?.user?.permissions)
+          : "/";
+      navigate(targetRoute, { replace: true });
     } catch (err) {
       const msg = err?.data?.message || "Failed to set password. Please try again.";
       setApiError(msg);
@@ -72,7 +81,7 @@ export default function StoreSetPassword() {
     return (
       <main className="login-page">
         <section className="login-card" style={{ textAlign: "center" }}>
-          <p className="eyebrow">SFC BAKERS &bull; STORE OWNER PORTAL</p>
+          <p className="eyebrow">SFC BAKERS &bull; ADMIN PORTAL</p>
           <div
             style={{
               display: "inline-flex",
@@ -102,7 +111,7 @@ export default function StoreSetPassword() {
     return (
       <main className="login-page">
         <section className="login-card" style={{ textAlign: "center", padding: "48px 32px" }}>
-          <p className="eyebrow">SFC BAKERS &bull; STORE OWNER PORTAL</p>
+          <p className="eyebrow">SFC BAKERS &bull; ADMIN PORTAL</p>
           <RefreshCw
             size={32}
             className="spin"
@@ -122,7 +131,7 @@ export default function StoreSetPassword() {
     return (
       <main className="login-page">
         <section className="login-card" style={{ textAlign: "center" }}>
-          <p className="eyebrow">SFC BAKERS &bull; STORE OWNER PORTAL</p>
+          <p className="eyebrow">SFC BAKERS &bull; ADMIN PORTAL</p>
           <div
             style={{
               display: "inline-flex",
@@ -137,7 +146,7 @@ export default function StoreSetPassword() {
           </div>
           <h1 style={{ fontSize: "20px", marginBottom: "8px" }}>Link Expired or Invalid</h1>
           <p className="muted" style={{ marginBottom: "24px" }}>
-            This password setup link has expired or has already been used. Please visit the login page to request access again.
+            This password setup link has expired or has already been used. Please contact the administrator or visit the login page.
           </p>
           <Link to="/login" style={{ textDecoration: "none" }}>
             <Button style={{ width: "100%" }}>Go to Sign In</Button>
@@ -151,11 +160,20 @@ export default function StoreSetPassword() {
   return (
     <main className="login-page">
       <section className="login-card">
-        <p className="eyebrow">SFC BAKERS &bull; STORE OWNER PORTAL</p>
-        <h1>Set Store Owner Password</h1>
+        <p className="eyebrow">{portalEyebrow}</p>
+        <h1>{isManagerInvite ? "Set Manager Password" : "Set Store Owner Password"}</h1>
         <p className="muted">
-          Welcome, <strong>{tokenData.ownerName || "Partner"}</strong>! Set your permanent password
-          for <strong>{tokenData.storeName || "your store"}</strong>.
+          {isManagerInvite ? (
+            <>
+              Welcome, <strong>{tokenData.ownerName || "Manager"}</strong>! Set your permanent
+              password to access your assigned admin workspace.
+            </>
+          ) : (
+            <>
+              Welcome, <strong>{tokenData.ownerName || "Partner"}</strong>! Set your permanent
+              password for <strong>{tokenData.storeName || "your store"}</strong>.
+            </>
+          )}
         </p>
 
         {apiError && <small className="error">{apiError}</small>}
@@ -163,7 +181,9 @@ export default function StoreSetPassword() {
         <form className="login-form" noValidate onSubmit={handleSubmit(onSubmit)}>
           {/* Email (Readonly) */}
           <div style={{ marginBottom: "16px" }}>
-            <label htmlFor="store-email">Store Owner Email</label>
+            <label htmlFor="store-email">
+              {isManagerInvite ? "Manager Email" : "Store Owner Email"}
+            </label>
             <Input
               id="store-email"
               type="email"

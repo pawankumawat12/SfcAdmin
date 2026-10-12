@@ -15,6 +15,7 @@ import {
 } from "../../services/authApi";
 import Button from "../../components/ui/Button";
 import Input from "../../components/ui/Input";
+import { getFirstAllowedRouteForManager } from "../../utils/managerPermissions";
 
 export default function Login() {
   const RESEND_COOLDOWN_SECONDS = 30;
@@ -70,7 +71,11 @@ export default function Login() {
           dispatch(setUser({ ...res.user, accessToken: token }));
         }
         toast.success(res?.message || "Welcome back! Logged in successfully.");
-        navigate("/", { replace: true });
+        const targetRoute =
+          res?.user?.role === "manager"
+            ? getFirstAllowedRouteForManager(res?.user?.permissions)
+            : "/";
+        navigate(targetRoute, { replace: true });
         return;
       }
 
@@ -98,7 +103,11 @@ export default function Login() {
       }
 
       toast.success("Welcome back! Logged in successfully.");
-      navigate("/", { replace: true });
+      const targetRoute =
+        res?.user?.role === "manager"
+          ? getFirstAllowedRouteForManager(res?.user?.permissions)
+          : "/";
+      navigate(targetRoute, { replace: true });
     } catch (error) {
       const errorMsg = error?.data?.message || "Invalid or expired OTP.";
       setApiError(errorMsg);

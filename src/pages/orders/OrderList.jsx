@@ -180,21 +180,30 @@ export default function OrderList() {
 
   const pagination = orderResponse?.pagination;
 
-  // Socket.IO real-time event listeners for Admin
+  // Socket.IO real-time event listeners for Admin & Store Owner
   useEffect(() => {
     const socket = getAdminSocket();
+    if (!socket) return;
 
     const handleNewOrder = (data) => {
+      const incomingOrder = data?.order || data;
+      if (isStoreOwner && !incomingOrder?.is_forwarded_to_store) {
+        return;
+      }
+      const customerLabel = isStoreOwner
+        ? "Customer"
+        : incomingOrder?.customer_name || "Customer";
       setLiveAlert({
         type: "order",
         title: "New Order Received!",
-        message: `Order #${data.order?.order_number || data.order?.id} from ${data.order?.customer_name} (₹${data.order?.total_amount})`,
-        order: data.order,
+        message: `Order #${incomingOrder?.order_number || incomingOrder?.id} from ${customerLabel} (₹${incomingOrder?.total_amount})`,
+        order: incomingOrder,
       });
       refetch();
     };
 
     const handleNewMessage = (data) => {
+      if (isStoreOwner) return;
       setLiveAlert({
         type: "message",
         title: `New Message on #${data.orderNumber}`,
@@ -215,6 +224,9 @@ export default function OrderList() {
     };
 
     const handleOrderCancelled = (data) => {
+      if (isStoreOwner && data?.order && !data.order.is_forwarded_to_store) {
+        return;
+      }
       refetch();
       if (data?.order?.id) {
         setSelectedOrderDetails((prev) => {
@@ -230,20 +242,25 @@ export default function OrderList() {
       });
     };
 
-    socket.on("admin_new_order", handleNewOrder);
+    if (isStoreOwner) {
+      socket.on("new_order", handleNewOrder);
+    } else {
+      socket.on("admin_new_order", handleNewOrder);
+    }
     socket.on("admin_new_message", handleNewMessage);
     socket.on("admin_order_updated", handleOrderUpdated);
     socket.on("admin_order_status_updated", handleOrderUpdated);
     socket.on("admin_order_cancelled", handleOrderCancelled);
 
     return () => {
+      socket.off("new_order", handleNewOrder);
       socket.off("admin_new_order", handleNewOrder);
       socket.off("admin_new_message", handleNewMessage);
       socket.off("admin_order_updated", handleOrderUpdated);
       socket.off("admin_order_status_updated", handleOrderUpdated);
       socket.off("admin_order_cancelled", handleOrderCancelled);
     };
-  }, [refetch]);
+  }, [refetch, isStoreOwner]);
 
   const handleStatusChange = async (orderId, newStatus) => {
     const order = orders.find((o) => o.id === orderId);
