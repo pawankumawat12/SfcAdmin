@@ -35,6 +35,8 @@ const SUPPORTED_FORMATS = [
 let detectorPromise = null;
 let jsQrPromise = null;
 
+const importRemoteModule = (url) => new Function("u", "return import(u)")(url);
+
 async function getJsQrDecoder() {
   if (!jsQrPromise) {
     jsQrPromise = (async () => {
@@ -44,7 +46,7 @@ async function getJsQrDecoder() {
       ];
       for (const url of urls) {
         try {
-          const mod = await import(/* @vite-ignore */ url);
+          const mod = await importRemoteModule(url);
           const fn = mod.default || mod;
           if (typeof fn === "function") return fn;
         } catch {
@@ -90,7 +92,7 @@ async function getBarcodeDetectorInstance() {
       ];
       for (const url of urls) {
         try {
-          const mod = await import(/* @vite-ignore */ url);
+          const mod = await importRemoteModule(url);
           const Polyfill =
             mod.BarcodeDetectorPolyfill || mod.BarcodeDetector || mod.default;
           if (Polyfill) {

@@ -35,7 +35,7 @@ import useDebouncedValue from "../../utils/useDebouncedValue";
 import PosProductModal from "./PosProductModal";
 import PosManageProductsModal from "./PosManageProductsModal";
 import PosSalesHistoryModal from "./PosSalesHistoryModal";
-import { PosQrStockModal, playScanBeep } from "./PosQrStockModal.jsx";
+import { PosQrStockModal, playScanBeep } from "./PosQrStockModal";
 
 export default function PosCounter() {
   const user = useSelector((state) => state.auth?.user);

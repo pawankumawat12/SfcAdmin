@@ -7,7 +7,7 @@ import {
   useGetProductCategoriesQuery,
 } from "../../services/productApi";
 import toAssetUrl from "../../utils/assetUrl";
-import { InlineCameraBarcodeScanner } from "./PosQrStockModal.jsx";
+import { InlineCameraBarcodeScanner } from "./PosQrStockModal";
 
 export default function PosProductModal({ isOpen, onClose, productToEdit, onSuccess, storeId, storeName }) {
   const [name, setName] = useState("");

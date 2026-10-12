@@ -42,9 +42,7 @@ import StoreProductList from "../pages/stores/StoreProductList";
 import StoreOrderList from "../pages/stores/StoreOrderList";
 import StoreSetPassword from "../pages/auth/StoreSetPassword";
 import StoreOwnerLocationSetup from "../pages/stores/StoreOwnerLocationSetup";
-import * as ManagerListModule from "../pages/managers/ManagerList.jsx";
-
-const ManagerList = ManagerListModule.default || ManagerListModule.ManagerList;
+import ManagerList from "../pages/managers/ManagerList";
 
 export default function AppRoutes() {
   return (
