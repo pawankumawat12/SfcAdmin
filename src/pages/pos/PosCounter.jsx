@@ -1297,45 +1297,116 @@ export default function PosCounter() {
         }}
         allProducts={storeScopedProducts}
         initialScannedProduct={scannedProductForPopup}
+        isGeneratingBill={isProcessingSale}
         onStockUpdated={async () => {
           await refetchProducts();
         }}
-        onAddToPosBill={(product, qty) => {
-          const isMadeToOrder = product.availability_type === "MADE_TO_ORDER";
-          const baseStock = Number(product.stock) || 0;
-          const existing = cartItems.find((item) => item.id === product.id);
-          const inCartQty = existing ? existing.quantity : 0;
-          const addQty = Math.max(1, Number(qty) || 1);
-
-          if (!isMadeToOrder && inCartQty + addQty > baseStock) {
-            toast.error(`"${product.name}" has only ${baseStock} units available in stock.`);
-            return;
-          }
+        onAddMultipleToPosBill={(scannedList) => {
+          if (!Array.isArray(scannedList) || scannedList.length === 0) return;
 
           setCartItems((prev) => {
-            if (existing) {
-              return prev.map((item) =>
-                item.id === product.id
-                  ? { ...item, quantity: item.quantity + addQty }
-                  : item
-              );
+            let nextCart = [...prev];
+            for (const entry of scannedList) {
+              const product = entry.product;
+              const addQty = Math.max(1, Number(entry.quantity) || 1);
+              const isMadeToOrder = product.availability_type === "MADE_TO_ORDER";
+              const baseStock = Number(product.stock) || 0;
+              const existingIdx = nextCart.findIndex((i) => i.id === product.id);
+              const inCartQty = existingIdx !== -1 ? nextCart[existingIdx].quantity : 0;
+
+              const allowedQty = isMadeToOrder
+                ? inCartQty + addQty
+                : Math.min(baseStock, inCartQty + addQty);
+
+              if (!isMadeToOrder && inCartQty + addQty > baseStock) {
+                toast.error(
+                  `"${product.name}" capped at ${baseStock} units (available stock).`
+                );
+              }
+
+              if (allowedQty <= 0) continue;
+
+              if (existingIdx !== -1) {
+                nextCart[existingIdx] = {
+                  ...nextCart[existingIdx],
+                  quantity: allowedQty,
+                };
+              } else {
+                nextCart.push({
+                  id: product.id,
+                  name: product.name,
+                  price: Number(product.price),
+                  stock: baseStock,
+                  availability_type: product.availability_type,
+                  images: product.images,
+                  category_name: product.category_name,
+                  is_pos_only: product.is_pos_only,
+                  quantity: allowedQty,
+                });
+              }
             }
-            return [
-              ...prev,
-              {
-                id: product.id,
-                name: product.name,
-                price: Number(product.price),
-                stock: baseStock,
-                availability_type: product.availability_type,
-                images: product.images,
-                category_name: product.category_name,
-                is_pos_only: product.is_pos_only,
-                quantity: addQty,
-              },
-            ];
+            return nextCart;
           });
-          toast.success(`Added ${addQty} × "${product.name}" to POS Bill`);
+
+          const totalAddedUnits = scannedList.reduce(
+            (s, e) => s + (Math.max(1, Number(e.quantity) || 1)),
+            0
+          );
+          toast.success(
+            `Added ${scannedList.length} scanned product(s) (${totalAddedUnits} units) to POS Bill!`
+          );
+        }}
+        onGenerateBillFromScan={async (scannedList, selectedPaymentMode = "Cash") => {
+          if (!Array.isArray(scannedList) || scannedList.length === 0) return false;
+
+          try {
+            const billItems = scannedList.map(({ product, quantity }) => ({
+              id: product.id,
+              name: product.name,
+              price: Number(product.price || 0),
+              quantity: Math.max(1, Number(quantity) || 1),
+              images: product.images,
+            }));
+
+            const scanSubtotal = billItems.reduce(
+              (sum, item) => sum + item.price * item.quantity,
+              0
+            );
+
+            const salePayload = {
+              customerName: customerName.trim() || "Walk-in Customer",
+              customerPhone: customerPhone.trim()
+                ? customerPhone.replace(/\D/g, "").slice(-10)
+                : "",
+              items: billItems,
+              subtotal: scanSubtotal,
+              discount: 0,
+              tax: 0,
+              totalAmount: scanSubtotal,
+              paymentMethod: selectedPaymentMode || "Cash",
+              receivedAmount: scanSubtotal,
+              changeAmount: 0,
+              notes: "Scanned QR/Barcode Bill",
+              storeId: isStoreOwner
+                ? activeStoreId || user?.store_id || null
+                : selectedStoreId === "admin"
+                ? null
+                : Number(selectedStoreId),
+            };
+
+            await createPosSale(salePayload).unwrap();
+            toast.success(
+              `Bill of ₹${scanSubtotal.toFixed(2)} generated & stock deducted for ${billItems.length} product(s)!`
+            );
+            await refetchProducts();
+            return true;
+          } catch (err) {
+            console.error("Scan bill error:", err);
+            toast.error(
+              err?.data?.message || err?.message || "Failed to generate bill from scan"
+            );
+            return false;
+          }
         }}
       />
     </div>

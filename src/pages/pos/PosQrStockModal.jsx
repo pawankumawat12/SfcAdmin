@@ -12,6 +12,8 @@ import {
   ShoppingBag,
   RefreshCw,
   ScanLine,
+  Trash2,
+  Receipt,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { useAdjustProductStockMutation } from "../../services/productApi";
@@ -370,7 +372,7 @@ export function InlineCameraBarcodeScanner({
       {cameraActive ? (
         <div
           className="position-relative rounded-3 overflow-hidden bg-dark mx-auto mt-2"
-          style={{ maxWidth: "440px", height: "240px" }}
+          style={{ maxWidth: "440px", height: "195px" }}
         >
           <video
             ref={videoRef}
@@ -382,19 +384,19 @@ export function InlineCameraBarcodeScanner({
             className="position-absolute top-50 start-50 translate-middle border border-2 border-success rounded-3 pointer-events-none"
             style={{
               width: "72%",
-              height: "62%",
+              height: "64%",
               boxShadow: "0 0 0 9999px rgba(0, 0, 0, 0.42)",
             }}
           />
           <div
-            className="position-absolute bottom-0 start-0 end-0 text-center text-white py-1.5 small fw-medium"
-            style={{ background: "rgba(0,0,0,0.65)", fontSize: "11.5px" }}
+            className="position-absolute bottom-0 start-0 end-0 text-center text-white py-1 small fw-medium"
+            style={{ background: "rgba(0,0,0,0.65)", fontSize: "11px" }}
           >
-            Hold product QR Code or Barcode inside the green frame
+            Hold product QR Code or Barcode inside the green frame (Multi-Scan Ready)
           </div>
         </div>
       ) : (
-        <div className="text-center py-3 text-muted small">
+        <div className="text-center py-2.5 text-muted small">
           Click <strong>Start Scanner</strong> or scan directly using your USB/Wireless scanner.
         </div>
       )}
@@ -403,7 +405,7 @@ export function InlineCameraBarcodeScanner({
 }
 
 /**
- * Main POS Counter Scan & Minus Stock Popup Modal (Strictly Scan-Only)
+ * Main POS Counter Multi-Product Scan, Bill Generator & Stock Popup Modal (Strictly Scan-Only)
  */
 export function PosQrStockModal({
   isOpen,
@@ -412,42 +414,61 @@ export function PosQrStockModal({
   initialScannedProduct = null,
   onStockUpdated,
   onAddToPosBill,
+  onAddMultipleToPosBill,
+  onGenerateBillFromScan,
+  isGeneratingBill = false,
 }) {
-  const [matchedProduct, setMatchedProduct] = useState(null);
-  const [quantity, setQuantity] = useState(1);
+  // List of scanned items: [{ product, quantity }]
+  const [scannedItems, setScannedItems] = useState([]);
   const [actionMode, setActionMode] = useState("minus"); // "minus" | "add"
-  const [adjustProductStock, { isLoading: isAdjusting }] =
+  const [paymentMode, setPaymentMode] = useState("Cash"); // "Cash" | "UPI" | "Card"
+  const [isUpdatingBatchStock, setIsUpdatingBatchStock] = useState(false);
+  const [adjustProductStock, { isLoading: isAdjustingSingle }] =
     useAdjustProductStockMutation();
+
+  const isBusy = isAdjustingSingle || isUpdatingBatchStock || isGeneratingBill;
+  const allProductsRef = useRef(allProducts);
+  const actionModeRef = useRef(actionMode);
+  const listScrollRef = useRef(null);
+
+  useEffect(() => {
+    allProductsRef.current = allProducts;
+  }, [allProducts]);
+
+  useEffect(() => {
+    actionModeRef.current = actionMode;
+  }, [actionMode]);
 
   useEffect(() => {
     if (isOpen) {
       if (initialScannedProduct) {
-        setMatchedProduct(initialScannedProduct);
-        setQuantity(1);
-        setActionMode("minus");
+        setScannedItems([{ product: initialScannedProduct, quantity: 1 }]);
       } else {
-        setMatchedProduct(null);
-        setQuantity(1);
-        setActionMode("minus");
+        setScannedItems([]);
       }
+      setActionMode("minus");
+      setPaymentMode("Cash");
     }
   }, [isOpen, initialScannedProduct]);
 
-  // Keep matchedProduct synced with fresh stock from allProducts
+  // Keep scannedItems product references synced with fresh stock from allProducts
   useEffect(() => {
-    if (matchedProduct) {
-      const updated = (allProducts || []).find((p) => p.id === matchedProduct.id);
-      if (updated) {
-        setMatchedProduct(updated);
-      }
-    }
+    if (!allProducts || allProducts.length === 0) return;
+    setScannedItems((prev) => {
+      if (prev.length === 0) return prev;
+      return prev.map((entry) => {
+        const fresh = allProducts.find((p) => p.id === entry.product.id);
+        return fresh ? { ...entry, product: fresh } : entry;
+      });
+    });
   }, [allProducts]);
 
-  const findAndSelectProductByCode = (rawCode) => {
+  const handleCodeScanned = (rawCode) => {
     const clean = String(rawCode || "").trim();
     if (!clean) return;
 
-    const found = (allProducts || []).find(
+    const productsList = allProductsRef.current || [];
+    const found = productsList.find(
       (p) =>
         p.barcode &&
         String(p.barcode).trim().toLowerCase() === clean.toLowerCase()
@@ -458,99 +479,217 @@ export function PosQrStockModal({
       return;
     }
 
-    // If same product is scanned again while popup is already open, increment quantity!
-    if (matchedProduct && matchedProduct.id === found.id) {
-      const maxStock = Number(found.stock) || 0;
-      const isMadeToOrder = found.availability_type === "MADE_TO_ORDER";
-      setQuantity((prev) => {
-        const next = (Number(prev) || 1) + 1;
-        if (actionMode === "minus" && !isMadeToOrder && next > maxStock) {
-          toast.error(`Only ${maxStock} units available in stock!`);
+    const mode = actionModeRef.current;
+    const maxStock = Number(found.stock) || 0;
+    const isMadeToOrder = found.availability_type === "MADE_TO_ORDER";
+
+    setScannedItems((prev) => {
+      const existingIdx = prev.findIndex((item) => item.product.id === found.id);
+
+      if (existingIdx !== -1) {
+        const currentQty = Number(prev[existingIdx].quantity) || 1;
+        const nextQty = currentQty + 1;
+
+        if (mode === "minus" && !isMadeToOrder && nextQty > maxStock) {
+          toast.error(`"${found.name}" has only ${maxStock} units available in stock!`);
           return prev;
         }
-        toast.success(`Scanned again: Quantity increased to ${next}`);
-        return next;
-      });
-      return;
-    }
 
-    setMatchedProduct(found);
-    setQuantity(1);
-    setActionMode("minus");
-    toast.success(`Scanned & Matched: "${found.name}"`);
+        toast.success(`Scanned "${found.name}" — Qty: ${nextQty}`);
+        const updated = [...prev];
+        updated[existingIdx] = {
+          ...updated[existingIdx],
+          product: found,
+          quantity: nextQty,
+        };
+        return updated;
+      }
+
+      if (mode === "minus" && !isMadeToOrder && maxStock <= 0) {
+        toast.error(`"${found.name}" is out of stock (0 available)!`);
+        return prev;
+      }
+
+      toast.success(`Added "${found.name}" (₹${Number(found.price || 0).toFixed(2)})`);
+      return [...prev, { product: found, quantity: 1 }];
+    });
+
+    // Auto-scroll the scanned products list to show the newly scanned item
+    window.setTimeout(() => {
+      if (listScrollRef.current) {
+        listScrollRef.current.scrollTo({
+          top: listScrollRef.current.scrollHeight,
+          behavior: "smooth",
+        });
+      }
+    }, 60);
+  };
+
+  const updateItemQuantity = (productId, nextQtyRaw) => {
+    setScannedItems((prev) =>
+      prev.map((item) => {
+        if (item.product.id !== productId) return item;
+        const maxStock = Number(item.product.stock) || 0;
+        const isMadeToOrder = item.product.availability_type === "MADE_TO_ORDER";
+
+        if (nextQtyRaw === "") {
+          return { ...item, quantity: "" };
+        }
+
+        let nextQty = Math.max(1, parseInt(nextQtyRaw, 10) || 1);
+        if (actionMode === "minus" && !isMadeToOrder && nextQty > maxStock) {
+          toast.error(`Only ${maxStock} units of "${item.product.name}" in stock!`);
+          nextQty = Math.max(1, maxStock);
+        }
+        return { ...item, quantity: nextQty };
+      })
+    );
+  };
+
+  const stepItemQuantity = (productId, delta) => {
+    setScannedItems((prev) =>
+      prev
+        .map((item) => {
+          if (item.product.id !== productId) return item;
+          const currentQty = Number(item.quantity) || 1;
+          const nextQty = currentQty + delta;
+
+          if (nextQty <= 0) {
+            return null;
+          }
+
+          const maxStock = Number(item.product.stock) || 0;
+          const isMadeToOrder = item.product.availability_type === "MADE_TO_ORDER";
+          if (delta > 0 && actionMode === "minus" && !isMadeToOrder && nextQty > maxStock) {
+            toast.error(`Only ${maxStock} units of "${item.product.name}" in stock!`);
+            return item;
+          }
+
+          return { ...item, quantity: nextQty };
+        })
+        .filter(Boolean)
+    );
+  };
+
+  const removeScannedItem = (productId) => {
+    setScannedItems((prev) => prev.filter((item) => item.product.id !== productId));
   };
 
   if (!isOpen) return null;
 
-  const handleConfirmStockUpdate = async () => {
-    if (!matchedProduct) return;
-    const qty = Number(quantity);
-    if (!Number.isInteger(qty) || qty <= 0) {
-      toast.error("Please select a valid quantity (minimum 1)");
+  const totalUnits = scannedItems.reduce(
+    (sum, item) => sum + (Math.max(1, Number(item.quantity) || 1)),
+    0
+  );
+  const grandTotal = scannedItems.reduce(
+    (sum, item) =>
+      sum +
+      Number(item.product.price || 0) * Math.max(1, Number(item.quantity) || 1),
+    0
+  );
+
+  // 1) Directly Generate POS Bill & Minus Stock for all scanned products
+  const handleDirectGenerateBill = async () => {
+    if (scannedItems.length === 0) {
+      toast.error("Please scan at least one product first");
       return;
     }
 
-    const currentStock = Number(matchedProduct.stock) || 0;
-    const isMadeToOrder = matchedProduct.availability_type === "MADE_TO_ORDER";
+    const normalized = scannedItems.map((item) => ({
+      product: item.product,
+      quantity: Math.max(1, Number(item.quantity) || 1),
+    }));
 
-    if (actionMode === "minus" && !isMadeToOrder && qty > currentStock) {
-      toast.error(
-        `Cannot minus ${qty} units. Only ${currentStock} units available in stock!`
-      );
+    for (const entry of normalized) {
+      const stock = Number(entry.product.stock) || 0;
+      const isMadeToOrder = entry.product.availability_type === "MADE_TO_ORDER";
+      if (!isMadeToOrder && entry.quantity > stock) {
+        toast.error(
+          `"${entry.product.name}" has only ${stock} units available in stock!`
+        );
+        return;
+      }
+    }
+
+    if (onGenerateBillFromScan) {
+      const ok = await onGenerateBillFromScan(normalized, paymentMode);
+      if (ok !== false) {
+        setScannedItems([]);
+        onClose();
+      }
       return;
     }
 
+    // Fallback: add to POS bill if onGenerateBillFromScan not provided
+    handleMoveAllToPosBill();
+  };
+
+  // 2) Add all scanned products into the POS Counter Register Cart
+  const handleMoveAllToPosBill = () => {
+    if (scannedItems.length === 0) return;
+
+    const normalized = scannedItems.map((item) => ({
+      product: item.product,
+      quantity: Math.max(1, Number(item.quantity) || 1),
+    }));
+
+    if (onAddMultipleToPosBill) {
+      onAddMultipleToPosBill(normalized);
+    } else if (onAddToPosBill) {
+      normalized.forEach((entry) => onAddToPosBill(entry.product, entry.quantity));
+    }
+
+    setScannedItems([]);
+    onClose();
+  };
+
+  // 3) Direct Stock Minus / Add for all scanned products (without bill)
+  const handleBatchStockAdjustment = async () => {
+    if (scannedItems.length === 0) return;
+
+    const normalized = scannedItems.map((item) => ({
+      product: item.product,
+      quantity: Math.max(1, Number(item.quantity) || 1),
+    }));
+
+    for (const entry of normalized) {
+      const stock = Number(entry.product.stock) || 0;
+      const isMadeToOrder = entry.product.availability_type === "MADE_TO_ORDER";
+      if (actionMode === "minus" && !isMadeToOrder && entry.quantity > stock) {
+        toast.error(
+          `Cannot minus ${entry.quantity} of "${entry.product.name}". Only ${stock} in stock!`
+        );
+        return;
+      }
+    }
+
+    setIsUpdatingBatchStock(true);
     try {
-      const res = await adjustProductStock({
-        id: matchedProduct.id,
-        mode: actionMode,
-        quantity: qty,
-      }).unwrap();
+      for (const entry of normalized) {
+        await adjustProductStock({
+          id: entry.product.id,
+          mode: actionMode,
+          quantity: entry.quantity,
+        }).unwrap();
+      }
 
       toast.success(
-        res?.message ||
-          `Stock ${actionMode === "minus" ? "deducted" : "added"} successfully!`
+        `Stock ${
+          actionMode === "minus" ? "deducted" : "added"
+        } for ${normalized.length} product(s) (${totalUnits} units)!`
       );
-
-      if (res?.data) {
-        setMatchedProduct(res.data);
-      }
-      setQuantity(1);
 
       if (onStockUpdated) {
         await onStockUpdated();
       }
+      setScannedItems([]);
+      onClose();
     } catch (err) {
-      toast.error(err?.data?.message || "Failed to update stock");
+      toast.error(err?.data?.message || "Failed to update stock for scanned items");
+    } finally {
+      setIsUpdatingBatchStock(false);
     }
   };
-
-  const handleAddToBillClick = () => {
-    if (!matchedProduct || !onAddToPosBill) return;
-    const qty = Number(quantity) || 1;
-    onAddToPosBill(matchedProduct, qty);
-    onClose();
-  };
-
-  let productImg = "";
-  if (matchedProduct?.images) {
-    try {
-      const parsed =
-        typeof matchedProduct.images === "string"
-          ? JSON.parse(matchedProduct.images)
-          : matchedProduct.images;
-      if (Array.isArray(parsed) && parsed.length > 0) productImg = parsed[0];
-    } catch {
-      productImg = matchedProduct.images;
-    }
-  }
-
-  const currentStock = Number(matchedProduct?.stock) || 0;
-  const qtyNum = Math.max(1, Number(quantity) || 1);
-  const projectedStock =
-    actionMode === "minus"
-      ? Math.max(0, currentStock - qtyNum)
-      : currentStock + qtyNum;
 
   return (
     <div
@@ -559,42 +698,42 @@ export function PosQrStockModal({
         zIndex: 1065,
         backgroundColor: "rgba(15, 23, 42, 0.68)",
         backdropFilter: "blur(4px)",
-        padding: "16px",
+        padding: "12px",
       }}
       onClick={(e) => {
-        if (e.target === e.currentTarget && !isAdjusting) onClose();
+        if (e.target === e.currentTarget && !isBusy) onClose();
       }}
     >
       <div
         className="card border shadow-lg rounded-4 overflow-hidden w-100 bg-white"
         style={{
-          maxWidth: "560px",
-          maxHeight: "92vh",
+          maxWidth: "620px",
+          maxHeight: "94vh",
           display: "flex",
           flexDirection: "column",
         }}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="d-flex align-items-center justify-content-between px-4 py-3 border-bottom bg-light">
+        <div className="d-flex align-items-center justify-content-between px-4 py-2.5 border-bottom bg-light flex-shrink-0">
           <div className="d-flex align-items-center gap-2.5">
             <div
               className="rounded-3 d-flex align-items-center justify-content-center"
               style={{
-                width: "38px",
-                height: "38px",
+                width: "36px",
+                height: "36px",
                 background: "#dcfce7",
                 color: "#166534",
               }}
             >
-              <QrCode size={20} />
+              <QrCode size={19} />
             </div>
             <div>
               <h5 className="mb-0 fw-bold fs-6 text-dark">
-                Scan Product QR / Barcode
+                Multi-Product QR / Barcode Scanner
               </h5>
-              <span className="text-muted" style={{ fontSize: "12px" }}>
-                Scan packet QR/Barcode to manage quantity &amp; minus stock
+              <span className="text-muted" style={{ fontSize: "11.5px" }}>
+                Scan multiple products continuously to generate bill &amp; minus stock
               </span>
             </div>
           </div>
@@ -602,274 +741,354 @@ export function PosQrStockModal({
             type="button"
             className="btn btn-sm btn-icon text-muted p-1 border-0"
             onClick={onClose}
-            disabled={isAdjusting}
+            disabled={isBusy}
           >
             <X size={18} />
           </button>
         </div>
 
         {/* Body */}
-        <div className="p-4 overflow-y-auto" style={{ flex: 1 }}>
-          {/* Live Camera & Hardware Scanner (Scan-Only) */}
+        <div
+          className="p-3 overflow-y-auto"
+          style={{ flex: 1, minHeight: 0 }}
+        >
+          {/* Live Camera & Hardware Scanner (Continuously Active for Multi-Scan) */}
           <div className="mb-3">
             <InlineCameraBarcodeScanner
               active={isOpen}
-              autoStartCamera={!matchedProduct}
-              onDetected={(code) => findAndSelectProductByCode(code)}
+              autoStartCamera={true}
+              onDetected={handleCodeScanned}
             />
           </div>
 
-          {/* Matched Product Quantity & Stock Control Card */}
-          {matchedProduct ? (
-            <div
-              className="border rounded-4 p-3.5 mt-3"
-              style={{
-                background: "#f8fafc",
-                borderColor: "#cbd5e1",
-              }}
-            >
-              <div className="d-flex align-items-center justify-content-between mb-2">
-                <span
-                  className="badge rounded-pill px-2.5 py-1 fw-bold"
-                  style={{
-                    background: "#dcfce7",
-                    color: "#166534",
-                    fontSize: "11px",
-                  }}
-                >
-                  ✓ Product Scanned &amp; Matched
-                </span>
-                <button
-                  type="button"
-                  className="btn btn-link btn-sm text-decoration-none p-0 text-secondary"
-                  style={{ fontSize: "12px" }}
-                  onClick={() => {
-                    setMatchedProduct(null);
-                    setQuantity(1);
-                  }}
-                >
-                  Scan Another Item
-                </button>
-              </div>
+          {/* Scanned Products Header & Mode Toggle */}
+          <div className="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
+            <div className="d-flex align-items-center gap-2">
+              <span
+                className="badge rounded-pill px-2.5 py-1 fw-bold"
+                style={{
+                  background: scannedItems.length > 0 ? "#dcfce7" : "#f1f5f9",
+                  color: scannedItems.length > 0 ? "#166534" : "#64748b",
+                  fontSize: "11.5px",
+                }}
+              >
+                {scannedItems.length > 0
+                  ? `✓ ${scannedItems.length} Product(s) Scanned (${totalUnits} Qty)`
+                  : "0 Products Scanned"}
+              </span>
+            </div>
 
-              {/* Product Details Row */}
-              <div className="d-flex align-items-center gap-3 bg-white p-3 rounded-3 border mb-3">
-                <div
-                  className="rounded-3 border bg-light d-flex align-items-center justify-content-center overflow-hidden flex-shrink-0"
-                  style={{ width: "64px", height: "64px" }}
-                >
-                  {productImg ? (
-                    <img
-                      src={toAssetUrl(productImg)}
-                      alt={matchedProduct.name}
-                      className="w-100 h-100 object-fit-cover"
-                    />
-                  ) : (
-                    <Package size={26} className="text-muted opacity-50" />
-                  )}
-                </div>
-
-                <div className="flex-grow-1 min-w-0">
-                  <div className="fw-bold text-dark fs-6 text-truncate">
-                    {matchedProduct.name}
-                  </div>
-                  <div className="d-flex align-items-center gap-2 flex-wrap mt-1">
-                    <span className="badge bg-light text-dark border">
-                      Scanned Code: {matchedProduct.barcode || "N/A"}
-                    </span>
-                    <span className="fw-bold text-success">
-                      ₹{Number(matchedProduct.price || 0).toFixed(2)}
-                    </span>
-                    {matchedProduct.category_name && (
-                      <span className="text-muted small">
-                        • {matchedProduct.category_name}
-                      </span>
-                    )}
-                  </div>
-                </div>
-
-                <div className="text-end flex-shrink-0">
-                  <div className="text-muted" style={{ fontSize: "11px" }}>
-                    Current Stock
-                  </div>
-                  <div
-                    className={`fw-bold fs-5 ${
-                      currentStock <= 5 ? "text-danger" : "text-dark"
-                    }`}
-                  >
-                    {currentStock}
-                  </div>
-                </div>
-              </div>
-
-              {/* Mode Switcher: Minus Stock vs Add Stock */}
-              <div className="d-flex gap-2 mb-3">
+            <div className="d-flex align-items-center gap-1.5">
+              <div className="btn-group btn-group-sm" role="group">
                 <button
                   type="button"
                   onClick={() => setActionMode("minus")}
-                  className={`btn btn-sm flex-fill fw-bold py-2 rounded-3 ${
+                  className={`btn btn-sm fw-semibold py-0.5 px-2 ${
                     actionMode === "minus"
-                      ? "btn-danger text-white shadow-xs"
+                      ? "btn-danger text-white"
                       : "btn-outline-secondary bg-white"
                   }`}
+                  style={{ fontSize: "11px" }}
                 >
-                  − Minus Stock (Out / Sale)
+                  Bill / Minus Stock
                 </button>
                 <button
                   type="button"
                   onClick={() => setActionMode("add")}
-                  className={`btn btn-sm flex-fill fw-bold py-2 rounded-3 ${
+                  className={`btn btn-sm fw-semibold py-0.5 px-2 ${
                     actionMode === "add"
-                      ? "btn-success text-white shadow-xs"
+                      ? "btn-success text-white"
                       : "btn-outline-secondary bg-white"
                   }`}
+                  style={{ fontSize: "11px" }}
                 >
-                  + Add Stock (Restock In)
+                  + Restock In
                 </button>
               </div>
 
-              {/* Quantity Selector */}
-              <div className="bg-white border rounded-3 p-3 mb-3">
-                <div className="d-flex align-items-center justify-content-between flex-wrap gap-2">
-                  <div>
-                    <div className="fw-bold text-dark small">
-                      {actionMode === "minus"
-                        ? "Quantity to Minus from Stock"
-                        : "Quantity to Add to Stock"}
-                    </div>
-                    <div className="text-muted" style={{ fontSize: "11px" }}>
-                      Scan packet again or use + / − buttons to adjust quantity
-                    </div>
-                  </div>
-
-                  <div className="d-flex align-items-center gap-2">
-                    <button
-                      type="button"
-                      className="btn btn-outline-secondary d-flex align-items-center justify-content-center p-0"
-                      style={{ width: "36px", height: "36px", borderRadius: "10px" }}
-                      onClick={() => setQuantity((q) => Math.max(1, (Number(q) || 1) - 1))}
-                    >
-                      <Minus size={16} />
-                    </button>
-                    <input
-                      type="number"
-                      min="1"
-                      max={actionMode === "minus" ? Math.max(1, currentStock) : 99999}
-                      value={quantity}
-                      onChange={(e) => {
-                        const val = parseInt(e.target.value, 10);
-                        setQuantity(Number.isNaN(val) ? "" : Math.max(1, val));
-                      }}
-                      className="form-control text-center fw-bold"
-                      style={{ width: "78px", height: "36px", fontSize: "16px" }}
-                    />
-                    <button
-                      type="button"
-                      className="btn btn-outline-secondary d-flex align-items-center justify-content-center p-0"
-                      style={{ width: "36px", height: "36px", borderRadius: "10px" }}
-                      onClick={() =>
-                        setQuantity((q) => {
-                          const next = (Number(q) || 1) + 1;
-                          if (
-                            actionMode === "minus" &&
-                            matchedProduct.availability_type !== "MADE_TO_ORDER" &&
-                            next > currentStock
-                          ) {
-                            toast.error(`Only ${currentStock} units in stock`);
-                            return q;
-                          }
-                          return next;
-                        })
-                      }
-                    >
-                      <Plus size={16} />
-                    </button>
-                  </div>
-                </div>
-
-                {/* Quick Quantity Pills */}
-                <div className="d-flex align-items-center justify-content-between flex-wrap gap-2 mt-3 pt-2 border-top">
-                  <div className="d-flex align-items-center gap-1.5">
-                    <span className="text-muted small me-1" style={{ fontSize: "11px" }}>
-                      Quick Qty:
-                    </span>
-                    {[1, 2, 5, 10].map((preset) => (
-                      <button
-                        key={preset}
-                        type="button"
-                        className={`btn btn-xs rounded-2 px-2.5 py-1 fw-semibold ${
-                          Number(quantity) === preset
-                            ? "btn-dark text-white"
-                            : "btn-light border text-secondary"
-                        }`}
-                        style={{ fontSize: "11px" }}
-                        onClick={() => setQuantity(preset)}
-                      >
-                        {preset}
-                      </button>
-                    ))}
-                  </div>
-
-                  <div className="small fw-semibold">
-                    Stock After Update:{" "}
-                    <span
-                      className={
-                        actionMode === "minus" ? "text-danger fw-bold" : "text-success fw-bold"
-                      }
-                    >
-                      {currentStock} {actionMode === "minus" ? `− ${qtyNum}` : `+ ${qtyNum}`} ={" "}
-                      {projectedStock} units
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Action Buttons */}
-              <div className="d-flex flex-wrap gap-2">
+              {scannedItems.length > 0 && (
                 <button
                   type="button"
-                  disabled={isAdjusting || (actionMode === "minus" && currentStock <= 0)}
-                  onClick={handleConfirmStockUpdate}
-                  className={`btn flex-grow-1 py-2.5 fw-bold d-flex align-items-center justify-content-center gap-2 rounded-3 ${
-                    actionMode === "minus" ? "btn-danger" : "btn-success"
-                  }`}
+                  className="btn btn-sm btn-outline-danger py-0.5 px-2 d-inline-flex align-items-center gap-1"
+                  style={{ fontSize: "11px" }}
+                  onClick={() => setScannedItems([])}
+                  disabled={isBusy}
                 >
-                  {isAdjusting ? (
-                    <>
-                      <RefreshCw size={16} className="spin" />
-                      <span>Updating Stock...</span>
-                    </>
-                  ) : (
-                    <>
-                      <CheckCircle2 size={17} />
-                      <span>
-                        {actionMode === "minus"
-                          ? `Minus ${qtyNum} from Stock Now`
-                          : `Add ${qtyNum} to Stock Now`}
-                      </span>
-                    </>
-                  )}
+                  <Trash2 size={12} />
+                  <span>Clear All</span>
                 </button>
+              )}
+            </div>
+          </div>
 
-                {onAddToPosBill && actionMode === "minus" && (
-                  <button
-                    type="button"
-                    disabled={isAdjusting || currentStock <= 0}
-                    onClick={handleAddToBillClick}
-                    className="btn btn-outline-primary py-2.5 px-3 fw-semibold d-flex align-items-center justify-content-center gap-1.5 rounded-3"
-                  >
-                    <ShoppingBag size={16} />
-                    <span>Add to POS Bill ({qtyNum})</span>
-                  </button>
-                )}
+          {/* Scrollable Scanned Products List */}
+          {scannedItems.length > 0 ? (
+            <div
+              ref={listScrollRef}
+              className="border rounded-3 p-2 bg-light"
+              style={{
+                maxHeight: "250px",
+                overflowY: "auto",
+                overflowX: "hidden",
+                scrollBehavior: "smooth",
+              }}
+            >
+              <div className="d-flex flex-column gap-2">
+                {scannedItems.map(({ product, quantity }, idx) => {
+                  let productImg = "";
+                  if (product?.images) {
+                    try {
+                      const parsed =
+                        typeof product.images === "string"
+                          ? JSON.parse(product.images)
+                          : product.images;
+                      if (Array.isArray(parsed) && parsed.length > 0)
+                        productImg = parsed[0];
+                    } catch {
+                      productImg = product.images;
+                    }
+                  }
+
+                  const currentStock = Number(product.stock) || 0;
+                  const qtyNum = Math.max(1, Number(quantity) || 1);
+                  const unitPrice = Number(product.price || 0);
+                  const lineTotal = unitPrice * qtyNum;
+                  const afterStock =
+                    actionMode === "minus"
+                      ? Math.max(0, currentStock - qtyNum)
+                      : currentStock + qtyNum;
+
+                  return (
+                    <div
+                      key={product.id}
+                      className="d-flex align-items-center justify-content-between gap-2 bg-white p-2.5 rounded-3 border shadow-2xs"
+                    >
+                      {/* Left: Index + Thumbnail + Product Info */}
+                      <div className="d-flex align-items-center gap-2.5 min-w-0 flex-grow-1">
+                        <span
+                          className="badge bg-light text-secondary border rounded-circle d-flex align-items-center justify-content-center flex-shrink-0"
+                          style={{ width: "22px", height: "22px", fontSize: "10.5px" }}
+                        >
+                          {idx + 1}
+                        </span>
+                        <div
+                          className="rounded-2 border bg-light d-flex align-items-center justify-content-center overflow-hidden flex-shrink-0"
+                          style={{ width: "44px", height: "44px" }}
+                        >
+                          {productImg ? (
+                            <img
+                              src={toAssetUrl(productImg)}
+                              alt={product.name}
+                              className="w-100 h-100 object-fit-cover"
+                            />
+                          ) : (
+                            <Package size={20} className="text-muted opacity-50" />
+                          )}
+                        </div>
+
+                        <div className="min-w-0 flex-grow-1">
+                          <div
+                            className="fw-bold text-dark text-truncate"
+                            style={{ fontSize: "13px" }}
+                            title={product.name}
+                          >
+                            {product.name}
+                          </div>
+                          <div className="d-flex align-items-center gap-1.5 flex-wrap mt-0.5">
+                            <span
+                              className="fw-semibold text-success"
+                              style={{ fontSize: "11.5px" }}
+                            >
+                              ₹{unitPrice.toFixed(2)}
+                            </span>
+                            <span
+                              className="text-muted"
+                              style={{ fontSize: "10.5px" }}
+                            >
+                              • Stock: {currentStock} →{" "}
+                              <strong
+                                className={
+                                  actionMode === "minus"
+                                    ? "text-danger"
+                                    : "text-success"
+                                }
+                              >
+                                {afterStock}
+                              </strong>
+                            </span>
+                            {product.barcode && (
+                              <span
+                                className="badge bg-light text-secondary border"
+                                style={{ fontSize: "9.5px" }}
+                              >
+                                {product.barcode}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Right: Quantity Steppers + Line Total + Remove */}
+                      <div className="d-flex align-items-center gap-2 flex-shrink-0">
+                        <div className="d-flex align-items-center border rounded-2 bg-light">
+                          <button
+                            type="button"
+                            className="btn btn-sm btn-icon py-0 px-2 text-secondary border-0"
+                            onClick={() => stepItemQuantity(product.id, -1)}
+                            disabled={isBusy}
+                            title="Decrease quantity"
+                          >
+                            <Minus size={13} />
+                          </button>
+                          <input
+                            type="number"
+                            min="1"
+                            max={
+                              actionMode === "minus"
+                                ? Math.max(1, currentStock)
+                                : 99999
+                            }
+                            value={quantity}
+                            onChange={(e) =>
+                              updateItemQuantity(product.id, e.target.value)
+                            }
+                            disabled={isBusy}
+                            className="form-control form-control-sm text-center fw-bold border-0 bg-white px-1"
+                            style={{
+                              width: "44px",
+                              height: "28px",
+                              fontSize: "12.5px",
+                            }}
+                          />
+                          <button
+                            type="button"
+                            className="btn btn-sm btn-icon py-0 px-2 text-secondary border-0"
+                            onClick={() => stepItemQuantity(product.id, 1)}
+                            disabled={isBusy}
+                            title="Increase quantity"
+                          >
+                            <Plus size={13} />
+                          </button>
+                        </div>
+
+                        <div
+                          className="text-end fw-bold text-dark"
+                          style={{ minWidth: "62px", fontSize: "13px" }}
+                        >
+                          ₹{lineTotal.toFixed(2)}
+                        </div>
+
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-link text-danger p-1"
+                          onClick={() => removeScannedItem(product.id)}
+                          disabled={isBusy}
+                          title="Remove item"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           ) : (
-            <div className="text-center py-3 px-3 border rounded-3 bg-white text-muted small">
-              Scan any product packet QR Code or Barcode using the camera above (or USB scanner) — the product popup will open automatically.
+            <div className="text-center py-4 px-3 border rounded-3 bg-white text-muted small">
+              Scan one or multiple product packet QR Codes / Barcodes using the camera above (or USB scanner). All scanned products will appear here in a scrollable list for instant billing!
             </div>
           )}
         </div>
+
+        {/* Sticky Footer: Direct Charge & Complete Sale */}
+        {scannedItems.length > 0 && (
+          <div className="px-4 py-3 border-top bg-light flex-shrink-0">
+            <div className="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2.5">
+              <div>
+                <span className="text-muted small">
+                  Total Scanned:{" "}
+                  <strong className="text-dark">
+                    {scannedItems.length} item(s) ({totalUnits} units)
+                  </strong>
+                </span>
+              </div>
+
+              {actionMode === "minus" && (
+                <div className="d-flex align-items-center gap-1.5">
+                  <span className="text-muted small me-1" style={{ fontSize: "11.5px" }}>
+                    Payment:
+                  </span>
+                  {["Cash", "UPI", "Card"].map((mode) => (
+                    <button
+                      key={mode}
+                      type="button"
+                      onClick={() => setPaymentMode(mode)}
+                      className={`btn btn-xs rounded-2 px-2.5 py-1 fw-semibold ${
+                        paymentMode === mode
+                          ? "btn-primary text-white"
+                          : "btn-white border text-secondary bg-white"
+                      }`}
+                      style={{ fontSize: "11.5px" }}
+                    >
+                      {mode}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              <div className="text-end">
+                <span className="text-muted small me-1.5">Payable Total:</span>
+                <span className="fw-bolder text-dark fs-5">
+                  ₹{grandTotal.toFixed(2)}
+                </span>
+              </div>
+            </div>
+
+            {actionMode === "minus" ? (
+              <button
+                type="button"
+                disabled={isBusy}
+                onClick={handleDirectGenerateBill}
+                className="btn btn-primary btn-lg w-100 py-2.5 fw-bold d-flex align-items-center justify-content-center gap-2 rounded-3 shadow-xs"
+              >
+                {isGeneratingBill ? (
+                  <>
+                    <RefreshCw size={18} className="spin" />
+                    <span>Recording Sale...</span>
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 size={18} />
+                    <span>
+                      Charge ₹{grandTotal.toFixed(2)} &amp; Complete Sale
+                    </span>
+                  </>
+                )}
+              </button>
+            ) : (
+              <button
+                type="button"
+                disabled={isBusy}
+                onClick={handleBatchStockAdjustment}
+                className="btn btn-success btn-lg w-100 py-2.5 fw-bold d-flex align-items-center justify-content-center gap-2 rounded-3 shadow-xs"
+              >
+                {isUpdatingBatchStock ? (
+                  <>
+                    <RefreshCw size={18} className="spin" />
+                    <span>Adding Stock...</span>
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 size={18} />
+                    <span>
+                      + Add Stock for All {scannedItems.length} Product(s) ({totalUnits} units)
+                    </span>
+                  </>
+                )}
+              </button>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
