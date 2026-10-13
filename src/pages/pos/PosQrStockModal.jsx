@@ -497,6 +497,16 @@ export function PosQrStockModal({
       return;
     }
 
+    if (found.expiry_date) {
+      const expStr = String(found.expiry_date).split("T")[0];
+      const exp = new Date(expStr + "T00:00:00");
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      if (exp < today) {
+        toast.warning(`Note: Scanned item "${found.name}" expired on ${expStr}!`);
+      }
+    }
+
     playScanBeep();
     toast.success(`Added "${found.name}" (₹${Number(found.price || 0).toFixed(2)})`);
 
@@ -917,6 +927,37 @@ export function PosQrStockModal({
                                 {product.barcode}
                               </span>
                             )}
+                            {product.expiry_date && (() => {
+                              const expStr = String(product.expiry_date).split("T")[0];
+                              const exp = new Date(expStr + "T00:00:00");
+                              const today = new Date();
+                              today.setHours(0, 0, 0, 0);
+                              const diffDays = Math.ceil((exp - today) / (1000 * 60 * 60 * 24));
+                              const formatted = !isNaN(exp.getTime())
+                                ? exp.toLocaleDateString("en-IN", { day: "numeric", month: "short" })
+                                : expStr;
+                              const isExpired = diffDays < 0;
+                              return (
+                                <span
+                                  className={`badge ${
+                                    isExpired
+                                      ? "bg-danger text-white fw-bold"
+                                      : diffDays === 0
+                                      ? "bg-danger text-white fw-bold"
+                                      : diffDays <= 2
+                                      ? "bg-warning-subtle text-warning-emphasis border border-warning"
+                                      : "bg-light text-muted border"
+                                  }`}
+                                  style={{ fontSize: "9.5px" }}
+                                >
+                                  {isExpired
+                                    ? `✕ Exp: ${formatted}`
+                                    : diffDays === 0
+                                    ? `⚠ Exp: Today`
+                                    : `Exp: ${formatted}`}
+                                </span>
+                              );
+                            })()}
                           </div>
                         </div>
                       </div>

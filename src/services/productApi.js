@@ -94,6 +94,10 @@ export const productApi = baseApi.injectEndpoints({
         if (data.barcode !== undefined) {
           formData.append("barcode", String(data.barcode ?? ""));
         }
+
+        if (data.expiry_date !== undefined || data.expiryDate !== undefined) {
+          formData.append("expiry_date", String(data.expiry_date ?? data.expiryDate ?? ""));
+        }
     
         // VERY IMPORTANT
         formData.append(

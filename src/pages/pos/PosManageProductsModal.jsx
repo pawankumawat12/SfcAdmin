@@ -280,6 +280,31 @@ export default function PosManageProductsModal({
                                   QR: {item.barcode}
                                 </span>
                               )}
+                              {item.expiry_date && (() => {
+                                const expStr = String(item.expiry_date).split("T")[0];
+                                const exp = new Date(expStr + "T00:00:00");
+                                const today = new Date();
+                                today.setHours(0, 0, 0, 0);
+                                const diffDays = Math.ceil((exp - today) / (1000 * 60 * 60 * 24));
+                                const formatted = !isNaN(exp.getTime())
+                                  ? exp.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })
+                                  : expStr;
+                                const isExpired = diffDays < 0;
+                                return (
+                                  <span
+                                    className={`badge rounded-pill fw-medium ${
+                                      isExpired
+                                        ? "bg-danger-subtle text-danger border border-danger-subtle"
+                                        : diffDays <= 2
+                                        ? "bg-warning-subtle text-warning-emphasis border border-warning-subtle"
+                                        : "bg-light text-muted border"
+                                    }`}
+                                    style={{ fontSize: "10px" }}
+                                  >
+                                    📅 {isExpired ? `Expired: ${formatted}` : `Exp: ${formatted}`}
+                                  </span>
+                                );
+                              })()}
                             </div>
                           </td>
                           <td>

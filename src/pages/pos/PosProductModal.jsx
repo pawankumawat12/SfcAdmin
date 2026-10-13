@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { X, Upload, Package, DollarSign, Layers, CheckCircle2, AlertCircle, Sparkles, Trash2, QrCode, Camera } from "lucide-react";
+import { X, Upload, Package, DollarSign, Layers, CheckCircle2, AlertCircle, Sparkles, Trash2, QrCode, Camera, Calendar } from "lucide-react";
 import toast from "react-hot-toast";
 import {
   useCreateProductMutation,
@@ -16,6 +16,7 @@ export default function PosProductModal({ isOpen, onClose, productToEdit, onSucc
   const [stock, setStock] = useState("999");
   const [barcode, setBarcode] = useState("");
   const [showBarcodeScanner, setShowBarcodeScanner] = useState(false);
+  const [expiryDate, setExpiryDate] = useState("");
   const [description, setDescription] = useState("");
   const [status, setStatus] = useState("Active");
   const [imageFile, setImageFile] = useState(null);
@@ -35,6 +36,7 @@ export default function PosProductModal({ isOpen, onClose, productToEdit, onSucc
     setStock("999");
     setBarcode("");
     setShowBarcodeScanner(false);
+    setExpiryDate("");
     setDescription("");
     setStatus("Active");
     setImageFile(null);
@@ -51,6 +53,11 @@ export default function PosProductModal({ isOpen, onClose, productToEdit, onSucc
       setStock(productToEdit.stock !== undefined ? String(productToEdit.stock) : "999");
       setBarcode(productToEdit.barcode || "");
       setShowBarcodeScanner(false);
+      setExpiryDate(
+        productToEdit.expiry_date
+          ? String(productToEdit.expiry_date).split("T")[0]
+          : ""
+      );
       setDescription(productToEdit.description || "");
       setStatus(productToEdit.is_active ? "Active" : "Inactive");
 
@@ -129,6 +136,8 @@ export default function PosProductModal({ isOpen, onClose, productToEdit, onSucc
           price: Number(price),
           stock: Number(stock) || 0,
           barcode: barcode.trim(),
+          expiry_date: expiryDate ? expiryDate : null,
+          expiryDate: expiryDate ? expiryDate : null,
           description: description.trim(),
           status,
           availabilityType: "IN_STOCK",
@@ -147,6 +156,8 @@ export default function PosProductModal({ isOpen, onClose, productToEdit, onSucc
           price: Number(price),
           stock: Number(stock) || 0,
           barcode: barcode.trim(),
+          expiry_date: expiryDate ? expiryDate : null,
+          expiryDate: expiryDate ? expiryDate : null,
           description: description.trim(),
           status,
           availabilityType: "IN_STOCK",
@@ -322,6 +333,102 @@ export default function PosProductModal({ isOpen, onClose, productToEdit, onSucc
                 <option value="Active">Active (Available on POS)</option>
                 <option value="Inactive">Inactive (Disabled)</option>
               </select>
+            </div>
+
+            {/* Expiry Date */}
+            <div className="col-12">
+              <div className="d-flex align-items-center justify-content-between mb-1">
+                <label className="form-label small fw-semibold text-secondary mb-0 d-flex align-items-center gap-1.5">
+                  <Calendar size={14} className="text-primary" />
+                  <span>Product Expiry Date</span>
+                  <span className="text-muted fw-normal">(Optional — Best for Fresh Bakery Items)</span>
+                </label>
+                {expiryDate && (
+                  <button
+                    type="button"
+                    className="btn btn-link btn-sm text-danger p-0 text-decoration-none"
+                    style={{ fontSize: "11px" }}
+                    onClick={() => setExpiryDate("")}
+                  >
+                    Clear Expiry Date
+                  </button>
+                )}
+              </div>
+              <div className="input-group">
+                <span className="input-group-text bg-light border-end-0">
+                  <Calendar size={16} className="text-primary" />
+                </span>
+                <input
+                  type="date"
+                  className="form-control border-start-0 ps-0"
+                  value={expiryDate}
+                  onChange={(e) => setExpiryDate(e.target.value)}
+                  disabled={isSaving}
+                />
+              </div>
+
+              {/* Quick Preset Buttons */}
+              <div className="d-flex align-items-center gap-1.5 flex-wrap mt-1.5">
+                <span className="text-muted" style={{ fontSize: "11px" }}>Quick Set:</span>
+                {[
+                  { label: "Today", days: 0 },
+                  { label: "+1 Day", days: 1 },
+                  { label: "+2 Days", days: 2 },
+                  { label: "+3 Days", days: 3 },
+                  { label: "+7 Days", days: 7 },
+                  { label: "+15 Days", days: 15 },
+                  { label: "+30 Days", days: 30 },
+                ].map((preset) => {
+                  const target = new Date();
+                  target.setDate(target.getDate() + preset.days);
+                  const iso = target.toISOString().split("T")[0];
+                  const isSelected = expiryDate === iso;
+                  return (
+                    <button
+                      key={preset.label}
+                      type="button"
+                      className={`btn btn-xs rounded-2 px-2 py-0.5 fw-medium ${
+                        isSelected ? "btn-primary text-white" : "btn-light border text-secondary"
+                      }`}
+                      style={{ fontSize: "11px" }}
+                      onClick={() => setExpiryDate(iso)}
+                      disabled={isSaving}
+                    >
+                      {preset.label}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {expiryDate && (
+                <div className="mt-1" style={{ fontSize: "11.5px" }}>
+                  {(() => {
+                    const todayStr = new Date().toISOString().split("T")[0];
+                    if (expiryDate < todayStr) {
+                      return (
+                        <span className="text-danger fw-bold">
+                          ⚠ Expired on {new Date(expiryDate).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
+                        </span>
+                      );
+                    }
+                    if (expiryDate === todayStr) {
+                      return (
+                        <span className="text-warning-emphasis fw-bold">
+                          ⚠ Expires Today ({new Date(expiryDate).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })})
+                        </span>
+                      );
+                    }
+                    const diffDays = Math.round(
+                      (new Date(expiryDate) - new Date(todayStr)) / (1000 * 60 * 60 * 24)
+                    );
+                    return (
+                      <span className="text-success fw-semibold">
+                        ✓ Fresh: Expires in {diffDays} day{diffDays > 1 ? "s" : ""} ({new Date(expiryDate).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })})
+                      </span>
+                    );
+                  })()}
+                </div>
+              )}
             </div>
 
             {/* Product Packet QR / Barcode (Strictly Scan-Only) */}

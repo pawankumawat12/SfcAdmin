@@ -309,6 +309,16 @@ export default function PosCounter() {
       return;
     }
 
+    if (product.expiry_date) {
+      const expStr = String(product.expiry_date).split("T")[0];
+      const exp = new Date(expStr + "T00:00:00");
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      if (exp < today) {
+        toast.warning(`Note: "${product.name}" expired on ${expStr}!`);
+      }
+    }
+
     setCartItems((prev) => {
       if (existing) {
         return prev.map((item) =>
@@ -328,6 +338,7 @@ export default function PosCounter() {
           images: product.images,
           category_name: product.category_name,
           is_pos_only: product.is_pos_only,
+          expiry_date: product.expiry_date,
           quantity: 1,
         },
       ];
@@ -831,6 +842,39 @@ export default function PosCounter() {
                               >
                                 {product.category_name || "Bakery"}
                               </div>
+                              {product.expiry_date && (() => {
+                                const expStr = String(product.expiry_date).split("T")[0];
+                                const exp = new Date(expStr + "T00:00:00");
+                                const today = new Date();
+                                today.setHours(0, 0, 0, 0);
+                                const diffDays = Math.ceil((exp - today) / (1000 * 60 * 60 * 24));
+                                const formatted = !isNaN(exp.getTime())
+                                  ? exp.toLocaleDateString("en-IN", { day: "numeric", month: "short" })
+                                  : expStr;
+                                const isExpired = diffDays < 0;
+                                return (
+                                  <div className="mt-1">
+                                    <span
+                                      className={`badge ${
+                                        isExpired
+                                          ? "bg-danger text-white fw-bold"
+                                          : diffDays === 0
+                                          ? "bg-danger text-white fw-bold"
+                                          : diffDays <= 2
+                                          ? "bg-warning-subtle text-warning-emphasis border border-warning"
+                                          : "bg-light text-muted border"
+                                      }`}
+                                      style={{ fontSize: "9.5px", padding: "2px 5px" }}
+                                    >
+                                      {isExpired
+                                        ? `✕ Exp: ${formatted}`
+                                        : diffDays === 0
+                                        ? `⚠ Exp: Today`
+                                        : `Exp: ${formatted}`}
+                                    </span>
+                                  </div>
+                                );
+                              })()}
                             </div>
 
                             <div className="d-flex align-items-center justify-content-between mt-2 pt-1 border-top">
@@ -1002,8 +1046,30 @@ export default function PosCounter() {
                             </span>
                           )}
                         </div>
-                        <div className="text-muted" style={{ fontSize: "11px" }}>
-                          ₹{item.price.toFixed(2)} each {item.availability_type !== "MADE_TO_ORDER" ? `• Stock: ${item.stock}` : "• Made to Order"}
+                        <div className="text-muted d-flex align-items-center gap-1 flex-wrap" style={{ fontSize: "11px" }}>
+                          <span>₹{item.price.toFixed(2)} each {item.availability_type !== "MADE_TO_ORDER" ? `• Stock: ${item.stock}` : "• Made to Order"}</span>
+                          {item.expiry_date && (() => {
+                            const expStr = String(item.expiry_date).split("T")[0];
+                            const exp = new Date(expStr + "T00:00:00");
+                            const today = new Date();
+                            today.setHours(0, 0, 0, 0);
+                            const isExpired = exp < today;
+                            const formatted = !isNaN(exp.getTime())
+                              ? exp.toLocaleDateString("en-IN", { day: "numeric", month: "short" })
+                              : expStr;
+                            return (
+                              <span
+                                className={`badge ${
+                                  isExpired
+                                    ? "bg-danger text-white fw-bold"
+                                    : "bg-light text-muted border"
+                                }`}
+                                style={{ fontSize: "9px" }}
+                              >
+                                {isExpired ? `✕ Exp: ${formatted}` : `Exp: ${formatted}`}
+                              </span>
+                            );
+                          })()}
                         </div>
                       </div>
 
@@ -1341,6 +1407,7 @@ export default function PosCounter() {
                   images: product.images,
                   category_name: product.category_name,
                   is_pos_only: product.is_pos_only,
+                  expiry_date: product.expiry_date,
                   quantity: allowedQty,
                 });
               }
