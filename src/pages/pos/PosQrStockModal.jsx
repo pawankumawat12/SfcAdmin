@@ -290,13 +290,8 @@ export function InlineCameraBarcodeScanner({
             const vh = videoEl.videoHeight || 480;
             const raw = await decodeFromVisualSource(videoEl, vw, vh);
             const now = Date.now();
-            if (
-              raw &&
-              (raw !== lastDetectedRef.current.code ||
-                now - lastDetectedRef.current.time > 1800)
-            ) {
+            if (raw && raw !== lastDetectedRef.current.code) {
               lastDetectedRef.current = { code: raw, time: now };
-              playScanBeep();
               if (onDetectedRef.current) {
                 onDetectedRef.current(raw);
               }
@@ -429,6 +424,7 @@ export function PosQrStockModal({
   const isBusy = isAdjustingSingle || isUpdatingBatchStock || isGeneratingBill;
   const allProductsRef = useRef(allProducts);
   const actionModeRef = useRef(actionMode);
+  const scannedItemsRef = useRef(scannedItems);
   const listScrollRef = useRef(null);
 
   useEffect(() => {
@@ -438,6 +434,10 @@ export function PosQrStockModal({
   useEffect(() => {
     actionModeRef.current = actionMode;
   }, [actionMode]);
+
+  useEffect(() => {
+    scannedItemsRef.current = scannedItems;
+  }, [scannedItems]);
 
   useEffect(() => {
     if (isOpen) {
@@ -479,38 +479,31 @@ export function PosQrStockModal({
       return;
     }
 
+    // If product is already scanned in the list, do NOT increase quantity via scanner
+    // Admin will manually adjust quantity using the + / - buttons
+    const alreadyScanned = (scannedItemsRef.current || []).some(
+      (item) => item.product.id === found.id
+    );
+    if (alreadyScanned) {
+      return;
+    }
+
     const mode = actionModeRef.current;
     const maxStock = Number(found.stock) || 0;
     const isMadeToOrder = found.availability_type === "MADE_TO_ORDER";
 
+    if (mode === "minus" && !isMadeToOrder && maxStock <= 0) {
+      toast.error(`"${found.name}" is out of stock (0 available)!`);
+      return;
+    }
+
+    playScanBeep();
+    toast.success(`Added "${found.name}" (₹${Number(found.price || 0).toFixed(2)})`);
+
     setScannedItems((prev) => {
-      const existingIdx = prev.findIndex((item) => item.product.id === found.id);
-
-      if (existingIdx !== -1) {
-        const currentQty = Number(prev[existingIdx].quantity) || 1;
-        const nextQty = currentQty + 1;
-
-        if (mode === "minus" && !isMadeToOrder && nextQty > maxStock) {
-          toast.error(`"${found.name}" has only ${maxStock} units available in stock!`);
-          return prev;
-        }
-
-        toast.success(`Scanned "${found.name}" — Qty: ${nextQty}`);
-        const updated = [...prev];
-        updated[existingIdx] = {
-          ...updated[existingIdx],
-          product: found,
-          quantity: nextQty,
-        };
-        return updated;
-      }
-
-      if (mode === "minus" && !isMadeToOrder && maxStock <= 0) {
-        toast.error(`"${found.name}" is out of stock (0 available)!`);
+      if (prev.some((item) => item.product.id === found.id)) {
         return prev;
       }
-
-      toast.success(`Added "${found.name}" (₹${Number(found.price || 0).toFixed(2)})`);
       return [...prev, { product: found, quantity: 1 }];
     });
 
