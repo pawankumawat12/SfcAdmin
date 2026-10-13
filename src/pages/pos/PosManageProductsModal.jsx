@@ -312,8 +312,24 @@ export default function PosManageProductsModal({
                               {item.category_name || "Uncategorized"}
                             </span>
                           </td>
-                          <td className="text-end fw-bold text-dark fs-6">
-                            ₹{Number(item.price).toFixed(2)}
+                          <td className="text-end">
+                            <div className="fw-bold text-dark fs-6">
+                              ₹{Number(item.price).toFixed(2)}
+                            </div>
+                            {item.cost_price != null && Number(item.cost_price) > 0 && (() => {
+                              const p = Number(item.price) || 0;
+                              const c = Number(item.cost_price) || 0;
+                              const profit = p - c;
+                              const margin = p > 0 ? ((profit / p) * 100).toFixed(0) : 0;
+                              return (
+                                <div style={{ fontSize: "10.5px" }}>
+                                  <span className="text-muted">Cost: ₹{c.toFixed(2)}</span>
+                                  <span className={`ms-1 fw-semibold ${profit >= 0 ? "text-success" : "text-danger"}`}>
+                                    ({profit >= 0 ? "+" : ""}₹{profit.toFixed(0)}, {margin}%)
+                                  </span>
+                                </div>
+                              );
+                            })()}
                           </td>
                           <td className="text-center">
                             <span

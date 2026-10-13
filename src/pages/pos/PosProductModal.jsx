@@ -13,6 +13,7 @@ export default function PosProductModal({ isOpen, onClose, productToEdit, onSucc
   const [name, setName] = useState("");
   const [categoryId, setCategoryId] = useState("");
   const [price, setPrice] = useState("");
+  const [costPrice, setCostPrice] = useState("");
   const [stock, setStock] = useState("999");
   const [barcode, setBarcode] = useState("");
   const [showBarcodeScanner, setShowBarcodeScanner] = useState(false);
@@ -33,6 +34,7 @@ export default function PosProductModal({ isOpen, onClose, productToEdit, onSucc
     setName("");
     setCategoryId(categories.length > 0 ? String(categories[0].id) : "");
     setPrice("");
+    setCostPrice("");
     setStock("999");
     setBarcode("");
     setShowBarcodeScanner(false);
@@ -50,6 +52,11 @@ export default function PosProductModal({ isOpen, onClose, productToEdit, onSucc
       setName(productToEdit.name || "");
       setCategoryId(productToEdit.category_id || productToEdit.categoryId || "");
       setPrice(productToEdit.price !== undefined ? String(productToEdit.price) : "");
+      setCostPrice(
+        productToEdit.cost_price !== undefined && productToEdit.cost_price !== null
+          ? String(productToEdit.cost_price)
+          : ""
+      );
       setStock(productToEdit.stock !== undefined ? String(productToEdit.stock) : "999");
       setBarcode(productToEdit.barcode || "");
       setShowBarcodeScanner(false);
@@ -134,6 +141,8 @@ export default function PosProductModal({ isOpen, onClose, productToEdit, onSucc
           name: name.trim(),
           categoryId: Number(categoryId),
           price: Number(price),
+          cost_price: costPrice !== "" ? Number(costPrice) : 0,
+          costPrice: costPrice !== "" ? Number(costPrice) : 0,
           stock: Number(stock) || 0,
           barcode: barcode.trim(),
           expiry_date: expiryDate ? expiryDate : null,
@@ -154,6 +163,8 @@ export default function PosProductModal({ isOpen, onClose, productToEdit, onSucc
           name: name.trim(),
           categoryId: Number(categoryId),
           price: Number(price),
+          cost_price: costPrice !== "" ? Number(costPrice) : 0,
+          costPrice: costPrice !== "" ? Number(costPrice) : 0,
           stock: Number(stock) || 0,
           barcode: barcode.trim(),
           expiry_date: expiryDate ? expiryDate : null,
@@ -280,7 +291,7 @@ export default function PosProductModal({ isOpen, onClose, productToEdit, onSucc
             {/* Selling Price */}
             <div className="col-md-6 col-12">
               <label className="form-label small fw-semibold text-secondary mb-1">
-                Price (₹) <span className="text-danger">*</span>
+                Selling Price (₹) <span className="text-danger">*</span>
               </label>
               <div className="input-group">
                 <span className="input-group-text bg-light border-end-0 fw-bold text-muted">
@@ -298,6 +309,51 @@ export default function PosProductModal({ isOpen, onClose, productToEdit, onSucc
                   disabled={isSaving}
                 />
               </div>
+              <div className="form-text" style={{ fontSize: "11px" }}>
+                Price charged to customer
+              </div>
+            </div>
+
+            {/* Cost Price */}
+            <div className="col-md-6 col-12">
+              <label className="form-label small fw-semibold text-secondary mb-1">
+                Cost Price (₹){" "}
+                <span className="text-muted fw-normal">(Purchase / Making Cost)</span>
+              </label>
+              <div className="input-group">
+                <span className="input-group-text bg-light border-end-0 fw-bold text-muted">
+                  ₹
+                </span>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  className="form-control border-start-0 ps-0"
+                  placeholder="0.00"
+                  value={costPrice}
+                  onChange={(e) => setCostPrice(e.target.value)}
+                  disabled={isSaving}
+                />
+              </div>
+              {price && costPrice !== "" && (() => {
+                const p = Number(price) || 0;
+                const c = Number(costPrice) || 0;
+                const profit = p - c;
+                const margin = p > 0 ? ((profit / p) * 100).toFixed(1) : 0;
+                return (
+                  <div className="mt-1" style={{ fontSize: "11px" }}>
+                    {profit >= 0 ? (
+                      <span className="text-success fw-semibold">
+                        ✓ Profit: ₹{profit.toFixed(2)}/unit ({margin}% margin)
+                      </span>
+                    ) : (
+                      <span className="text-danger fw-semibold">
+                        ⚠ Cost higher than Selling Price (-₹{Math.abs(profit).toFixed(2)})
+                      </span>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
 
             {/* Stock Quantity */}

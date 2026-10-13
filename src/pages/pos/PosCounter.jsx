@@ -339,6 +339,7 @@ export default function PosCounter() {
           category_name: product.category_name,
           is_pos_only: product.is_pos_only,
           expiry_date: product.expiry_date,
+          cost_price: Number(product.cost_price) || 0,
           quantity: 1,
         },
       ];
@@ -419,6 +420,7 @@ export default function PosCounter() {
           id: item.id,
           name: item.name,
           price: item.price,
+          cost_price: Number(item.cost_price) || 0,
           quantity: item.quantity,
           images: item.images,
         })),
@@ -1408,6 +1410,7 @@ export default function PosCounter() {
                   category_name: product.category_name,
                   is_pos_only: product.is_pos_only,
                   expiry_date: product.expiry_date,
+                  cost_price: Number(product.cost_price) || 0,
                   quantity: allowedQty,
                 });
               }
@@ -1431,6 +1434,7 @@ export default function PosCounter() {
               id: product.id,
               name: product.name,
               price: Number(product.price || 0),
+              cost_price: Number(product.cost_price) || 0,
               quantity: Math.max(1, Number(quantity) || 1),
               images: product.images,
             }));

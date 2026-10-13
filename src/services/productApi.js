@@ -98,6 +98,10 @@ export const productApi = baseApi.injectEndpoints({
         if (data.expiry_date !== undefined || data.expiryDate !== undefined) {
           formData.append("expiry_date", String(data.expiry_date ?? data.expiryDate ?? ""));
         }
+
+        if (data.cost_price !== undefined || data.costPrice !== undefined) {
+          formData.append("cost_price", String(data.cost_price ?? data.costPrice ?? "0"));
+        }
     
         // VERY IMPORTANT
         formData.append(

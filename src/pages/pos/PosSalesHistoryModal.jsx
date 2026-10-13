@@ -16,6 +16,9 @@ import {
   CreditCard,
   Banknote,
   QrCode,
+  TrendingUp,
+  DollarSign,
+  Package,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import {
@@ -62,6 +65,14 @@ export default function PosSalesHistoryModal({
   const [updatePosSale, { isLoading: isUpdating }] = useUpdatePosSaleMutation();
 
   const sales = historyResponse?.data || [];
+  const summary = historyResponse?.summary || {
+    totalSales: 0,
+    totalCost: 0,
+    totalProfit: 0,
+    profitMargin: 0,
+    totalOrders: sales.length,
+    totalItems: 0,
+  };
 
   if (!isOpen) return null;
 
@@ -448,6 +459,68 @@ export default function PosSalesHistoryModal({
             ) : (
               /* History List Mode */
               <div>
+                {/* 4 Financial & Profit KPI Summary Cards (Strictly for POS Exclusive Products) */}
+                <div className="row g-2.5 mb-3">
+                  <div className="col-6 col-md-3">
+                    <div className="card border bg-light p-2.5 rounded-3 h-100 shadow-2xs">
+                      <span className="text-muted fw-medium" style={{ fontSize: "11px" }}>
+                        POS Items Sales
+                      </span>
+                      <div className="fw-bold text-dark fs-5 mt-0.5">
+                        ₹{Number(summary.totalSales || 0).toFixed(2)}
+                      </div>
+                      <span className="text-secondary" style={{ fontSize: "10.5px" }}>
+                        Exclusive POS items revenue
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="col-6 col-md-3">
+                    <div className="card border bg-light p-2.5 rounded-3 h-100 shadow-2xs">
+                      <span className="text-muted fw-medium" style={{ fontSize: "11px" }}>
+                        POS Items Cost
+                      </span>
+                      <div className="fw-bold text-secondary fs-5 mt-0.5">
+                        ₹{Number(summary.totalCost || 0).toFixed(2)}
+                      </div>
+                      <span className="text-muted" style={{ fontSize: "10.5px" }}>
+                        Cost of sold POS items
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="col-6 col-md-3">
+                    <div
+                      className="card border p-2.5 rounded-3 h-100 shadow-2xs"
+                      style={{ background: "#f0fdf4", borderColor: "#86efac" }}
+                    >
+                      <span className="fw-semibold text-success" style={{ fontSize: "11px" }}>
+                        POS Net Profit
+                      </span>
+                      <div className="fw-bold text-success fs-5 mt-0.5">
+                        ₹{Number(summary.totalProfit || 0).toFixed(2)}
+                      </div>
+                      <span className="text-success fw-medium" style={{ fontSize: "10.5px" }}>
+                        {summary.profitMargin || 0}% POS Margin
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="col-6 col-md-3">
+                    <div className="card border bg-light p-2.5 rounded-3 h-100 shadow-2xs">
+                      <span className="text-muted fw-medium" style={{ fontSize: "11px" }}>
+                        POS Items Sold
+                      </span>
+                      <div className="fw-bold text-dark fs-5 mt-0.5">
+                        {summary.totalItems || 0} Units
+                      </div>
+                      <span className="text-muted" style={{ fontSize: "10.5px" }}>
+                        Across {summary.totalOrders || 0} counter bills
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
                 {/* Search Bar */}
                 <div className="d-flex align-items-center justify-content-between gap-3 mb-3 flex-wrap">
                   <div className="input-group input-group-sm" style={{ maxWidth: "340px" }}>
@@ -491,8 +564,9 @@ export default function PosSalesHistoryModal({
                           <th>Customer</th>
                           <th>Items Sold</th>
                           <th>Payment</th>
-                          <th className="text-end">Amount (Revenue)</th>
-                          <th className="text-center" style={{ width: "90px" }}>Action</th>
+                          <th className="text-end">Bill Total</th>
+                          <th className="text-end">POS Profit</th>
+                          <th className="text-center" style={{ width: "80px" }}>Action</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -533,9 +607,22 @@ export default function PosSalesHistoryModal({
                                     className="d-flex align-items-center justify-content-between text-dark"
                                     style={{ fontSize: "12px" }}
                                   >
-                                    <span className="text-truncate" style={{ maxWidth: "220px" }}>
-                                      • {it.product_name || "Product"}
-                                    </span>
+                                    <div className="d-flex align-items-center gap-1 text-truncate" style={{ maxWidth: "230px" }}>
+                                      <span className="text-truncate">• {it.product_name || "Product"}</span>
+                                      {it.is_pos_only && (
+                                        <span
+                                          className="badge rounded-pill"
+                                          style={{
+                                            fontSize: "8.5px",
+                                            backgroundColor: "#ede9fe",
+                                            color: "#6b21a8",
+                                            padding: "2px 5px",
+                                          }}
+                                        >
+                                          POS
+                                        </span>
+                                      )}
+                                    </div>
                                     <span className="badge bg-light text-secondary border ms-2">
                                       x{it.quantity} (₹{Number(it.price).toFixed(2)})
                                     </span>
@@ -558,6 +645,37 @@ export default function PosSalesHistoryModal({
                                 <div className="text-danger small" style={{ fontSize: "10.5px" }}>
                                   -₹{Number(sale.discount).toFixed(2)} off
                                 </div>
+                              )}
+                              {Number(sale.total_cost) > 0 && (
+                                <div className="text-muted" style={{ fontSize: "10.5px" }}>
+                                  POS Cost: ₹{Number(sale.total_cost).toFixed(2)}
+                                </div>
+                              )}
+                            </td>
+
+                            <td className="text-end">
+                              {sale.has_pos_items && sale.total_profit != null ? (
+                                <div>
+                                  <span
+                                    className={`badge ${
+                                      Number(sale.total_profit) >= 0
+                                        ? "bg-success-subtle text-success border border-success-subtle fw-bold"
+                                        : "bg-danger-subtle text-danger border border-danger-subtle fw-bold"
+                                    }`}
+                                    style={{ fontSize: "11px" }}
+                                  >
+                                    {Number(sale.total_profit) >= 0 ? "+" : ""}₹{Number(sale.total_profit).toFixed(2)}
+                                  </span>
+                                  {sale.profit_margin != null && (
+                                    <div className="text-muted" style={{ fontSize: "10px" }}>
+                                      {sale.profit_margin}% POS margin
+                                    </div>
+                                  )}
+                                </div>
+                              ) : (
+                                <span className="text-muted" style={{ fontSize: "11px" }}>
+                                  Non-POS Sale
+                                </span>
                               )}
                             </td>
 
