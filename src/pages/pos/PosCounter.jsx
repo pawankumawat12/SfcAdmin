@@ -39,8 +39,11 @@ import { PosQrStockModal, playScanBeep } from "./PosQrStockModal";
 
 export default function PosCounter() {
   const user = useSelector((state) => state.auth?.user);
+  const isManager = user?.role === "manager";
   const isAdmin = user?.role === "admin" || user?.role === "manager";
   const isStoreOwner = user?.role === "store_owner";
+  // Managers are restricted from adding or managing POS items
+  const canManagePosItems = !isManager;
 
   // If Store Owner, fetch own store
   const { data: myStoreResponse } = useGetMyStoreQuery(
@@ -476,7 +479,7 @@ export default function PosCounter() {
   }, [allProducts, isStoreOwner, isAdmin, selectedStoreId, activeStoreId]);
 
   return (
-    <div className="pos-counter-page pb-4">
+    <div className="pos-counter-page pb-5 mb-5 pb-lg-4 mb-lg-0">
       {/* Standard Admin Header */}
       <div className="section-head mb-4">
         <div>
@@ -536,20 +539,24 @@ export default function PosCounter() {
           >
             <History size={16} /> Sales History
           </Button>
-          <Button
-            variant="outline"
-            onClick={() => setIsManageModalOpen(true)}
-          >
-            <Settings size={16} /> Manage POS Items ({posItemsCount})
-          </Button>
-          <Button
-            onClick={() => {
-              setProductToEdit(null);
-              setIsAddModalOpen(true);
-            }}
-          >
-            <Plus size={16} /> Add POS Item
-          </Button>
+          {canManagePosItems && (
+            <>
+              <Button
+                variant="outline"
+                onClick={() => setIsManageModalOpen(true)}
+              >
+                <Settings size={16} /> Manage POS Items ({posItemsCount})
+              </Button>
+              <Button
+                onClick={() => {
+                  setProductToEdit(null);
+                  setIsAddModalOpen(true);
+                }}
+              >
+                <Plus size={16} /> Add POS Item
+              </Button>
+            </>
+          )}
 
           {/* Mobile Cart Trigger */}
           <button
@@ -676,14 +683,16 @@ export default function PosCounter() {
                       ? "No products matching your search term."
                       : "No products available in this category."}
                   </p>
-                  <Button
-                    onClick={() => {
-                      setProductToEdit(null);
-                      setIsAddModalOpen(true);
-                    }}
-                  >
-                    <Plus size={16} /> Create POS Item
-                  </Button>
+                  {canManagePosItems && (
+                    <Button
+                      onClick={() => {
+                        setProductToEdit(null);
+                        setIsAddModalOpen(true);
+                      }}
+                    >
+                      <Plus size={16} /> Create POS Item
+                    </Button>
+                  )}
                 </div>
               ) : (
                 <div className="row g-3">
@@ -1305,44 +1314,48 @@ export default function PosCounter() {
       </div>
 
       {/* POS Product Creation / Edit Modal */}
-      <PosProductModal
-        isOpen={isAddModalOpen}
-        onClose={() => {
-          setIsAddModalOpen(false);
-          setProductToEdit(null);
-        }}
-        storeId={isStoreOwner ? activeStoreId : (selectedStoreId === "admin" ? null : selectedStoreId)}
-        storeName={activeStoreName}
-        productToEdit={productToEdit}
-        onSuccess={async () => {
-          try {
-            if (refetchProducts) {
-              await refetchProducts();
+      {canManagePosItems && (
+        <PosProductModal
+          isOpen={isAddModalOpen}
+          onClose={() => {
+            setIsAddModalOpen(false);
+            setProductToEdit(null);
+          }}
+          storeId={isStoreOwner ? activeStoreId : (selectedStoreId === "admin" ? null : selectedStoreId)}
+          storeName={activeStoreName}
+          productToEdit={productToEdit}
+          onSuccess={async () => {
+            try {
+              if (refetchProducts) {
+                await refetchProducts();
+              }
+            } catch (e) {
+              console.warn("Product refetch notice:", e);
             }
-          } catch (e) {
-            console.warn("Product refetch notice:", e);
-          }
-        }}
-      />
+          }}
+        />
+      )}
 
       {/* Manage POS Items Drawer / Modal */}
-      <PosManageProductsModal
-        isOpen={isManageModalOpen}
-        onClose={() => setIsManageModalOpen(false)}
-        storeId={isStoreOwner ? activeStoreId : (selectedStoreId === "admin" ? null : selectedStoreId)}
-        storeName={activeStoreName}
-        allProducts={allProducts}
-        onAddNew={() => {
-          setIsManageModalOpen(false);
-          setProductToEdit(null);
-          setIsAddModalOpen(true);
-        }}
-        onEditProduct={(prod) => {
-          setIsManageModalOpen(false);
-          setProductToEdit(prod);
-          setIsAddModalOpen(true);
-        }}
-      />
+      {canManagePosItems && (
+        <PosManageProductsModal
+          isOpen={isManageModalOpen}
+          onClose={() => setIsManageModalOpen(false)}
+          storeId={isStoreOwner ? activeStoreId : (selectedStoreId === "admin" ? null : selectedStoreId)}
+          storeName={activeStoreName}
+          allProducts={allProducts}
+          onAddNew={() => {
+            setIsManageModalOpen(false);
+            setProductToEdit(null);
+            setIsAddModalOpen(true);
+          }}
+          onEditProduct={(prod) => {
+            setIsManageModalOpen(false);
+            setProductToEdit(prod);
+            setIsAddModalOpen(true);
+          }}
+        />
+      )}
 
       {/* POS Sales History & Edit Modal */}
       <PosSalesHistoryModal
@@ -1480,6 +1493,46 @@ export default function PosCounter() {
           }
         }}
       />
+
+      {/* Mobile Sticky Floating Bottom Bar for Fast Scan & Cart Access */}
+      <div
+        className="d-lg-none position-fixed bottom-0 start-0 w-100 bg-white border-top shadow-lg px-3 py-2 d-flex align-items-center justify-content-between gap-2"
+        style={{ zIndex: 1040 }}
+      >
+        <button
+          type="button"
+          onClick={() => {
+            setScannedProductForPopup(null);
+            setIsQrScannerOpen(true);
+          }}
+          className="btn btn-outline-success fw-bold d-inline-flex align-items-center justify-content-center gap-1.5 px-3 py-2 rounded-3"
+          style={{ fontSize: "13px" }}
+        >
+          <QrCode size={18} />
+          <span>Scan</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setMobileCartOpen(true)}
+          className={`btn flex-fill fw-bold d-inline-flex align-items-center justify-content-between px-3 py-2 rounded-3 shadow-xs ${
+            cartItems.length > 0
+              ? "btn-primary text-white"
+              : "btn-light text-muted border"
+          }`}
+          style={{ fontSize: "13.5px" }}
+        >
+          <div className="d-flex align-items-center gap-2">
+            <ShoppingBag size={18} />
+            <span>
+              {cartItems.reduce((acc, i) => acc + i.quantity, 0)} Item(s)
+            </span>
+          </div>
+          <span className="fw-bolder">
+            ₹{totalAmount.toFixed(2)} →
+          </span>
+        </button>
+      </div>
     </div>
   );
 }

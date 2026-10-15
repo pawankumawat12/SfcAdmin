@@ -1079,26 +1079,39 @@ export function PosQrStockModal({
             </div>
 
             {actionMode === "minus" ? (
-              <button
-                type="button"
-                disabled={isBusy}
-                onClick={handleDirectGenerateBill}
-                className="btn btn-primary btn-lg w-100 py-2.5 fw-bold d-flex align-items-center justify-content-center gap-2 rounded-3 shadow-xs"
-              >
-                {isGeneratingBill ? (
-                  <>
-                    <RefreshCw size={18} className="spin" />
-                    <span>Recording Sale...</span>
-                  </>
-                ) : (
-                  <>
-                    <CheckCircle2 size={18} />
-                    <span>
-                      Charge ₹{grandTotal.toFixed(2)} &amp; Complete Sale
-                    </span>
-                  </>
-                )}
-              </button>
+              <div className="d-flex flex-column flex-sm-row gap-2 w-100">
+                <button
+                  type="button"
+                  disabled={isBusy}
+                  onClick={handleMoveAllToPosBill}
+                  className="btn btn-outline-primary py-2.5 fw-bold d-flex align-items-center justify-content-center gap-2 rounded-3 flex-fill"
+                  title="Move scanned items into current POS bill and continue selecting items from catalog"
+                >
+                  <ShoppingBag size={18} />
+                  <span>Add to Bill &amp; Pick More</span>
+                </button>
+                <button
+                  type="button"
+                  disabled={isBusy}
+                  onClick={handleDirectGenerateBill}
+                  className="btn btn-primary py-2.5 fw-bold d-flex align-items-center justify-content-center gap-2 rounded-3 shadow-xs flex-fill"
+                  title="Directly charge this amount and record the sale immediately"
+                >
+                  {isGeneratingBill ? (
+                    <>
+                      <RefreshCw size={18} className="spin" />
+                      <span>Recording Sale...</span>
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle2 size={18} />
+                      <span>
+                        Quick Charge ₹{grandTotal.toFixed(2)}
+                      </span>
+                    </>
+                  )}
+                </button>
+              </div>
             ) : (
               <button
                 type="button"
