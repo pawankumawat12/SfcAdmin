@@ -771,7 +771,7 @@ const OrderDetailsModal = ({
                     lineHeight: "1.5",
                   }}
                 >
-                  "{order.notes.trim()}"
+                  "{order.notes.replace(/Cashier:\s*undefined/gi, "Cashier: Admin").replace(/Cashier:\s*,/gi, "Cashier: Admin,").trim()}"
                 </div>
               </div>
             ) : null}
@@ -1413,7 +1413,7 @@ const OrderDetailsModal = ({
               <OrderSection title="Order Notes">
 
                 <div className="alert alert-light border mb-0 small">
-                  {order.notes}
+                  {order.notes?.replace(/Cashier:\s*undefined/gi, "Cashier: Admin").replace(/Cashier:\s*,/gi, "Cashier: Admin,")}
                 </div>
 
               </OrderSection>

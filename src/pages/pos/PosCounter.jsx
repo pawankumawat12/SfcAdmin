@@ -438,6 +438,7 @@ export default function PosCounter() {
             : totalAmount,
         changeAmount: changeDue,
         notes: notes.trim(),
+        cashierName: user?.name || user?.email || (isManager ? "Manager" : "Admin"),
         storeId:
           isStoreOwner
             ? (activeStoreId || user?.store_id || null)

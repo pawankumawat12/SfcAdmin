@@ -463,6 +463,9 @@ export default function OrderList() {
       parsedAddress,
       parsedPricing,
       parsedPaymentDetails,
+      notes: order.notes
+        ? order.notes.replace(/Cashier:\s*undefined/gi, "Cashier: Admin").replace(/Cashier:\s*,/gi, "Cashier: Admin,")
+        : "",
     };
   });
 
