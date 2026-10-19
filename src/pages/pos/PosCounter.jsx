@@ -35,6 +35,7 @@ import useDebouncedValue from "../../utils/useDebouncedValue";
 import PosProductModal from "./PosProductModal";
 import PosManageProductsModal from "./PosManageProductsModal";
 import PosSalesHistoryModal from "./PosSalesHistoryModal";
+import PosReceiptModal from "./PosReceiptModal";
 import { PosQrStockModal, playScanBeep } from "./PosQrStockModal";
 
 export default function PosCounter() {
@@ -128,6 +129,8 @@ export default function PosCounter() {
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
   const [isQrScannerOpen, setIsQrScannerOpen] = useState(false);
   const [scannedProductForPopup, setScannedProductForPopup] = useState(null);
+  const [isReceiptModalOpen, setIsReceiptModalOpen] = useState(false);
+  const [receiptSaleData, setReceiptSaleData] = useState(null);
 
   const [mobileCartOpen, setMobileCartOpen] = useState(false);
 
@@ -445,12 +448,40 @@ export default function PosCounter() {
             : (selectedStoreId === "admin" ? null : Number(selectedStoreId)),
       };
 
-      await createPosSale(salePayload).unwrap();
+      const res = await createPosSale(salePayload).unwrap();
 
       toast.success("Sale completed! Stock updated successfully.");
 
       // Refresh products immediately to update current stock badges
       await refetchProducts();
+
+      // Open printable receipt slip
+      const createdOrderNumber =
+        res?.order?.order_number || `POS-${Date.now().toString().slice(-6)}`;
+      setReceiptSaleData({
+        orderNumber: createdOrderNumber,
+        customerName: salePayload.customerName,
+        customerPhone: salePayload.customerPhone,
+        items: salePayload.items,
+        subtotal: salePayload.subtotal,
+        discount: salePayload.discount,
+        tax: salePayload.tax,
+        totalAmount: salePayload.totalAmount,
+        paymentMethod: salePayload.paymentMethod,
+        receivedAmount: salePayload.receivedAmount,
+        changeAmount: salePayload.changeAmount,
+        date: new Date().toLocaleString("en-IN", {
+          day: "numeric",
+          month: "short",
+          year: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+        }),
+        cashierName: salePayload.cashierName,
+        storeName: activeStoreName || "Sweet & Savory Bakery",
+        storeAddress: myStore?.address || myStore?.location || "Main Store Counter",
+      });
+      setIsReceiptModalOpen(true);
 
       // Reset all register fields to empty/default state
       setCartItems([]);
@@ -1479,11 +1510,38 @@ export default function PosCounter() {
                 : Number(selectedStoreId),
             };
 
-            await createPosSale(salePayload).unwrap();
+            const res = await createPosSale(salePayload).unwrap();
             toast.success(
               `Bill of ₹${scanSubtotal.toFixed(2)} generated & stock deducted for ${billItems.length} product(s)!`
             );
             await refetchProducts();
+
+            const createdOrderNumber =
+              res?.order?.order_number || `POS-${Date.now().toString().slice(-6)}`;
+            setReceiptSaleData({
+              orderNumber: createdOrderNumber,
+              customerName: salePayload.customerName,
+              customerPhone: salePayload.customerPhone,
+              items: salePayload.items,
+              subtotal: salePayload.subtotal,
+              discount: salePayload.discount,
+              tax: salePayload.tax,
+              totalAmount: salePayload.totalAmount,
+              paymentMethod: salePayload.paymentMethod,
+              receivedAmount: salePayload.receivedAmount,
+              changeAmount: salePayload.changeAmount,
+              date: new Date().toLocaleString("en-IN", {
+                day: "numeric",
+                month: "short",
+                year: "numeric",
+                hour: "2-digit",
+                minute: "2-digit",
+              }),
+              cashierName: user?.name || user?.email || (isManager ? "Manager" : "Admin"),
+              storeName: activeStoreName || "Sweet & Savory Bakery",
+              storeAddress: myStore?.address || myStore?.location || "Main Store Counter",
+            });
+            setIsReceiptModalOpen(true);
             return true;
           } catch (err) {
             console.error("Scan bill error:", err);
@@ -1492,6 +1550,23 @@ export default function PosCounter() {
             );
             return false;
           }
+        }}
+      />
+
+      {/* POS Thermal Receipt Slip Modal */}
+      <PosReceiptModal
+        isOpen={isReceiptModalOpen}
+        onClose={() => setIsReceiptModalOpen(false)}
+        saleData={receiptSaleData}
+        onNewSale={() => {
+          setCartItems([]);
+          setCustomerName("");
+          setCustomerPhone("");
+          setDiscountValue("");
+          setCashReceived("");
+          setNotes("");
+          setIncludeTax(false);
+          setPaymentMethod("Cash");
         }}
       />
 

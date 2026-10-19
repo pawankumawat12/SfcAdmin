@@ -80,14 +80,18 @@ export default function PosReceiptModal({
         </div>
 
         {/* Printable Receipt Paper Container */}
-        <div className="p-4 overflow-y-auto flex-grow-1 bg-light">
+        <div
+          className="p-3 p-sm-4 flex-grow-1 bg-light"
+          style={{ overflowY: "auto", overflowX: "hidden" }}
+        >
           <div
             id="pos-thermal-receipt"
             ref={receiptRef}
-            className="bg-white p-4 shadow-sm mx-auto rounded-3 border"
+            className="bg-white p-3 p-sm-4 shadow-sm mx-auto rounded-3 border"
             style={{
               width: "100%",
               maxWidth: "340px",
+              boxSizing: "border-box",
               fontFamily: "'Courier New', Courier, monospace",
               color: "#111827",
               fontSize: "12px",
@@ -126,34 +130,32 @@ export default function PosReceiptModal({
               )}
             </div>
 
-            {/* Items Table */}
-            <table className="w-100 my-2" style={{ fontSize: "11.5px" }}>
-              <thead>
-                <tr className="border-bottom border-dark border-dashed">
-                  <th className="text-start pb-1">Item</th>
-                  <th className="text-center pb-1">Qty</th>
-                  <th className="text-end pb-1">Total</th>
-                </tr>
-              </thead>
-              <tbody>
-                {items.map((item, idx) => (
-                  <tr key={idx}>
-                    <td className="pt-1.5 text-start">
-                      <div className="fw-semibold text-truncate" style={{ maxWidth: "160px" }}>
-                        {item.name}
-                      </div>
-                      <small className="text-muted" style={{ fontSize: "10px" }}>
-                        @ ₹{Number(item.price).toFixed(2)}
-                      </small>
-                    </td>
-                    <td className="pt-1.5 text-center align-top">x{item.quantity}</td>
-                    <td className="pt-1.5 text-end align-top fw-bold">
-                      ₹{(Number(item.price) * Number(item.quantity)).toFixed(2)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            {/* Items List (Div-based to avoid global table min-width 720px interference) */}
+            <div className="my-2" style={{ fontSize: "11.5px" }}>
+              <div className="d-flex justify-content-between pb-1 fw-bold border-bottom border-dark border-dashed mb-1" style={{ fontSize: "11px" }}>
+                <span style={{ width: "52%", textAlign: "left" }}>Item</span>
+                <span style={{ width: "20%", textAlign: "center" }}>Qty</span>
+                <span style={{ width: "28%", textAlign: "right" }}>Total</span>
+              </div>
+              {items.map((item, idx) => (
+                <div key={idx} className="d-flex justify-content-between align-items-start py-1">
+                  <div style={{ width: "52%", minWidth: 0 }}>
+                    <div className="fw-semibold text-truncate" title={item.name}>
+                      {item.name}
+                    </div>
+                    <small className="text-muted" style={{ fontSize: "10px" }}>
+                      @ ₹{Number(item.price).toFixed(2)}
+                    </small>
+                  </div>
+                  <div style={{ width: "20%", textAlign: "center" }} className="align-top">
+                    x{item.quantity}
+                  </div>
+                  <div style={{ width: "28%", textAlign: "right" }} className="align-top fw-bold">
+                    ₹{(Number(item.price) * Number(item.quantity)).toFixed(2)}
+                  </div>
+                </div>
+              ))}
+            </div>
 
             {/* Totals */}
             <div className="border-top border-dark border-dashed pt-2 mt-2" style={{ fontSize: "11.5px" }}>

@@ -19,6 +19,7 @@ import {
   TrendingUp,
   DollarSign,
   Package,
+  Printer,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import {
@@ -27,6 +28,7 @@ import {
 } from "../../services/orderApi";
 import Button from "../../components/ui/Button";
 import useDebouncedValue from "../../utils/useDebouncedValue";
+import PosReceiptModal from "./PosReceiptModal";
 
 export default function PosSalesHistoryModal({
   isOpen,
@@ -39,6 +41,39 @@ export default function PosSalesHistoryModal({
   const [searchTerm, setSearchTerm] = useState("");
   const debouncedSearchTerm = useDebouncedValue(searchTerm, 400);
   const [editingSale, setEditingSale] = useState(null);
+  const [receiptSaleData, setReceiptSaleData] = useState(null);
+  const [isReceiptOpen, setIsReceiptOpen] = useState(false);
+
+  const handlePrintSlip = (sale) => {
+    setReceiptSaleData({
+      orderNumber: sale.order_number || `POS-${sale.id}`,
+      customerName: sale.customer_name || "Walk-in Customer",
+      customerPhone: sale.customer_phone || "",
+      items: (sale.items || []).map((it) => ({
+        name: it.product_name,
+        price: Number(it.price) || 0,
+        quantity: Number(it.quantity) || 1,
+      })),
+      subtotal: Number(sale.subtotal) || Number(sale.total_amount) || 0,
+      discount: Number(sale.discount) || 0,
+      tax: Number(sale.tax_amount) || 0,
+      totalAmount: Number(sale.total_amount) || 0,
+      paymentMethod: sale.payment_method || "Cash",
+      receivedAmount: Number(sale.total_amount) || 0,
+      changeAmount: 0,
+      date: new Date(sale.created_at).toLocaleString("en-IN", {
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      }),
+      cashierName: sale.cashier_name || "Store Counter",
+      storeName: storeName || "Sweet & Savory Bakery",
+      storeAddress: "Store Counter",
+    });
+    setIsReceiptOpen(true);
+  };
 
   // Editable fields when editing an order
   const [editCustomerName, setEditCustomerName] = useState("");
@@ -48,6 +83,7 @@ export default function PosSalesHistoryModal({
   const [editItems, setEditItems] = useState([]);
   const [editDiscount, setEditDiscount] = useState(0);
   const [editIncludeTax, setEditIncludeTax] = useState(false);
+  const [timeFilter, setTimeFilter] = useState("total");
 
   const {
     data: historyResponse,
@@ -56,7 +92,8 @@ export default function PosSalesHistoryModal({
   } = useGetPosSalesHistoryQuery(
     {
       search: debouncedSearchTerm.trim() || undefined,
-      limit: 50,
+      limit: 100,
+      timeRange: timeFilter,
       storeId: storeId !== undefined ? storeId : undefined,
     },
     { skip: !isOpen }
@@ -459,18 +496,68 @@ export default function PosSalesHistoryModal({
             ) : (
               /* History List Mode */
               <div>
-                {/* 4 Financial & Profit KPI Summary Cards (Strictly for POS Exclusive Products) */}
+                {/* Time Range Filter Bar (Day, Week, Month, Year, Total) */}
+                <div className="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3 p-2.5 bg-light border rounded-3">
+                  <div className="d-flex align-items-center gap-1.5 flex-wrap">
+                    <span className="text-secondary small fw-bold me-1 d-flex align-items-center gap-1">
+                      <Calendar size={14} className="text-primary" />
+                      <span>Filter:</span>
+                    </span>
+                    {[
+                      { id: "day", label: "Day (Today)" },
+                      { id: "week", label: "Week" },
+                      { id: "month", label: "Month" },
+                      { id: "year", label: "Year" },
+                      { id: "total", label: "Total (All)" },
+                    ].map((tf) => (
+                      <button
+                        key={tf.id}
+                        type="button"
+                        onClick={() => setTimeFilter(tf.id)}
+                        className={`btn btn-sm rounded-pill px-3 py-1 fw-bold transition-all ${
+                          timeFilter === tf.id
+                            ? "btn-primary text-white shadow-xs"
+                            : "btn-outline-secondary border text-dark bg-white"
+                        }`}
+                        style={{ fontSize: "12px" }}
+                      >
+                        {tf.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="text-muted small d-flex align-items-center gap-1">
+                    <Clock size={13} className="text-muted" />
+                    {timeFilter === "day" && <span>Sales for <strong>Today</strong></span>}
+                    {timeFilter === "week" && <span>Sales for <strong>This Week</strong></span>}
+                    {timeFilter === "month" && <span>Sales for <strong>This Month</strong></span>}
+                    {timeFilter === "year" && <span>Sales for <strong>This Year</strong></span>}
+                    {timeFilter === "total" && <span><strong>All Time Total</strong> sales</span>}
+                  </div>
+                </div>
+
+                {/* 4 Financial & Profit KPI Summary Cards */}
                 <div className="row g-2.5 mb-3">
                   <div className="col-6 col-md-3">
                     <div className="card border bg-light p-2.5 rounded-3 h-100 shadow-2xs">
                       <span className="text-muted fw-medium" style={{ fontSize: "11px" }}>
-                        POS Items Sales
+                        {timeFilter === "day"
+                          ? "Today's POS Sales"
+                          : timeFilter === "week"
+                          ? "This Week's POS Sales"
+                          : timeFilter === "month"
+                          ? "This Month's POS Sales"
+                          : timeFilter === "year"
+                          ? "This Year's POS Sales"
+                          : "Total POS Sales"}
                       </span>
                       <div className="fw-bold text-dark fs-5 mt-0.5">
                         ₹{Number(summary.totalSales || 0).toFixed(2)}
                       </div>
                       <span className="text-secondary" style={{ fontSize: "10.5px" }}>
-                        Exclusive POS items revenue
+                        {Number(summary.totalRevenue) > 0 && Number(summary.totalRevenue) !== Number(summary.totalSales)
+                          ? `Total Counter: ₹${Number(summary.totalRevenue).toFixed(2)}`
+                          : "Exclusive POS items revenue"}
                       </span>
                     </div>
                   </div>
@@ -478,7 +565,15 @@ export default function PosSalesHistoryModal({
                   <div className="col-6 col-md-3">
                     <div className="card border bg-light p-2.5 rounded-3 h-100 shadow-2xs">
                       <span className="text-muted fw-medium" style={{ fontSize: "11px" }}>
-                        POS Items Cost
+                        {timeFilter === "day"
+                          ? "Today's POS Cost"
+                          : timeFilter === "week"
+                          ? "This Week's POS Cost"
+                          : timeFilter === "month"
+                          ? "This Month's POS Cost"
+                          : timeFilter === "year"
+                          ? "This Year's POS Cost"
+                          : "Total POS Items Cost"}
                       </span>
                       <div className="fw-bold text-secondary fs-5 mt-0.5">
                         ₹{Number(summary.totalCost || 0).toFixed(2)}
@@ -495,7 +590,15 @@ export default function PosSalesHistoryModal({
                       style={{ background: "#f0fdf4", borderColor: "#86efac" }}
                     >
                       <span className="fw-semibold text-success" style={{ fontSize: "11px" }}>
-                        POS Net Profit
+                        {timeFilter === "day"
+                          ? "Today's Net Profit"
+                          : timeFilter === "week"
+                          ? "This Week's Net Profit"
+                          : timeFilter === "month"
+                          ? "This Month's Net Profit"
+                          : timeFilter === "year"
+                          ? "This Year's Net Profit"
+                          : "Total POS Net Profit"}
                       </span>
                       <div className="fw-bold text-success fs-5 mt-0.5">
                         ₹{Number(summary.totalProfit || 0).toFixed(2)}
@@ -509,7 +612,15 @@ export default function PosSalesHistoryModal({
                   <div className="col-6 col-md-3">
                     <div className="card border bg-light p-2.5 rounded-3 h-100 shadow-2xs">
                       <span className="text-muted fw-medium" style={{ fontSize: "11px" }}>
-                        POS Items Sold
+                        {timeFilter === "day"
+                          ? "Today's Items Sold"
+                          : timeFilter === "week"
+                          ? "This Week's Items Sold"
+                          : timeFilter === "month"
+                          ? "This Month's Items Sold"
+                          : timeFilter === "year"
+                          ? "This Year's Items Sold"
+                          : "Total Items Sold"}
                       </span>
                       <div className="fw-bold text-dark fs-5 mt-0.5">
                         {summary.totalItems || 0} Units
@@ -536,7 +647,7 @@ export default function PosSalesHistoryModal({
                     />
                   </div>
                   <div className="text-muted small">
-                    Showing <strong>{sales.length}</strong> recorded manual sales
+                    Showing <strong>{sales.length}</strong> recorded manual sales ({timeFilter === "day" ? "Today" : timeFilter === "week" ? "This Week" : timeFilter === "month" ? "This Month" : timeFilter === "year" ? "This Year" : "Total All Time"})
                   </div>
                 </div>
 
@@ -566,7 +677,7 @@ export default function PosSalesHistoryModal({
                           <th>Payment</th>
                           <th className="text-end">Bill Total</th>
                           <th className="text-end">POS Profit</th>
-                          <th className="text-center" style={{ width: "80px" }}>Action</th>
+                          <th className="text-center" style={{ width: "130px" }}>Action</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -680,16 +791,28 @@ export default function PosSalesHistoryModal({
                             </td>
 
                             <td className="text-center">
-                              <button
-                                type="button"
-                                className="btn btn-sm btn-outline-primary d-inline-flex align-items-center gap-1 py-1 px-2.5 rounded-2"
-                                style={{ fontSize: "11.5px" }}
-                                onClick={() => startEditing(sale)}
-                                title="Edit sale items or amount"
-                              >
-                                <Pencil size={12} />
-                                <span>Edit</span>
-                              </button>
+                              <div className="d-flex align-items-center justify-content-center gap-1.5">
+                                <button
+                                  type="button"
+                                  className="btn btn-sm btn-outline-dark d-inline-flex align-items-center gap-1 py-1 px-2 rounded-2"
+                                  style={{ fontSize: "11.5px" }}
+                                  onClick={() => handlePrintSlip(sale)}
+                                  title="Print thermal receipt slip"
+                                >
+                                  <Printer size={12} />
+                                  <span>Slip</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  className="btn btn-sm btn-outline-primary d-inline-flex align-items-center gap-1 py-1 px-2.5 rounded-2"
+                                  style={{ fontSize: "11.5px" }}
+                                  onClick={() => startEditing(sale)}
+                                  title="Edit sale items or amount"
+                                >
+                                  <Pencil size={12} />
+                                  <span>Edit</span>
+                                </button>
+                              </div>
                             </td>
                           </tr>
                         ))}
@@ -714,6 +837,13 @@ export default function PosSalesHistoryModal({
           )}
         </div>
       </div>
+
+      {/* POS Thermal Receipt Slip Preview Modal */}
+      <PosReceiptModal
+        isOpen={isReceiptOpen}
+        onClose={() => setIsReceiptOpen(false)}
+        saleData={receiptSaleData}
+      />
     </div>
   );
 }
