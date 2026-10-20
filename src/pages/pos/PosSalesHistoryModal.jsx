@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   X,
   Search,
@@ -27,6 +27,7 @@ import {
   useUpdatePosSaleMutation,
 } from "../../services/orderApi";
 import Button from "../../components/ui/Button";
+import Pagination from "../../components/ui/Pagination";
 import useDebouncedValue from "../../utils/useDebouncedValue";
 import PosReceiptModal from "./PosReceiptModal";
 
@@ -84,6 +85,12 @@ export default function PosSalesHistoryModal({
   const [editDiscount, setEditDiscount] = useState(0);
   const [editIncludeTax, setEditIncludeTax] = useState(false);
   const [timeFilter, setTimeFilter] = useState("total");
+  const [page, setPage] = useState(1);
+  const limit = 10;
+
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearchTerm, timeFilter]);
 
   const {
     data: historyResponse,
@@ -91,8 +98,9 @@ export default function PosSalesHistoryModal({
     refetch,
   } = useGetPosSalesHistoryQuery(
     {
+      page,
+      limit,
       search: debouncedSearchTerm.trim() || undefined,
-      limit: 100,
       timeRange: timeFilter,
       storeId: storeId !== undefined ? storeId : undefined,
     },
@@ -295,7 +303,7 @@ export default function PosSalesHistoryModal({
           </div>
 
           {/* Body */}
-          <div className="modal-body p-4 bg-white" style={{ minHeight: "450px" }}>
+          <div className="modal-body p-3 p-md-4 bg-white" style={{ minHeight: "450px", overflowX: "hidden" }}>
             {editingSale ? (
               /* Edit Sale Mode */
               <div>
@@ -667,8 +675,9 @@ export default function PosSalesHistoryModal({
                     </p>
                   </div>
                 ) : (
-                  <div className="table-responsive">
-                    <table className="table table-hover align-middle border mb-0">
+                  <>
+                    <div className="table-responsive">
+                      <table className="table table-hover align-middle border mb-0" style={{ minWidth: "750px" }}>
                       <thead className="table-light text-muted small">
                         <tr>
                           <th>Order / Date</th>
@@ -819,6 +828,18 @@ export default function PosSalesHistoryModal({
                       </tbody>
                     </table>
                   </div>
+
+                    {/* Pagination */}
+                    <Pagination
+                      page={page}
+                      totalPages={historyResponse?.pagination?.totalPages || 1}
+                      total={historyResponse?.pagination?.total || sales.length}
+                      limit={limit}
+                      onPageChange={setPage}
+                      itemLabel="sales"
+                      className="mt-3 pt-2 border-top"
+                    />
+                  </>
                 )}
               </div>
             )}

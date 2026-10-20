@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import {
   Plus,
   Pencil,
@@ -19,6 +19,7 @@ import Button from "../../components/ui/Button";
 import SearchInput from "../../components/ui/SearchInput";
 import Select from "../../components/ui/Select";
 import ConfirmDialog from "../../components/ui/ConfirmDialog";
+import Pagination from "../../components/ui/Pagination";
 import HeroSliderModal from "./HeroSliderModal";
 import useDebouncedValue from "../../utils/useDebouncedValue";
 import { toAssetUrl } from "../../utils/assetUrl";
@@ -66,6 +67,26 @@ export default function HeroSliderList() {
     inactive: sliders.filter((s) => !s.is_active).length,
   };
 
+  const [page, setPage] = useState(1);
+  const limit = 10;
+
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearch, statusFilter]);
+
+  const totalPages = Math.ceil(sliders.length / limit) || 1;
+
+  useEffect(() => {
+    if (page > totalPages) {
+      setPage(totalPages);
+    }
+  }, [totalPages, page]);
+
+  const paginatedSliders = useMemo(() => {
+    const start = (page - 1) * limit;
+    return sliders.slice(start, start + limit);
+  }, [sliders, page, limit]);
+
   // Open Add Modal
   const handleOpenAdd = () => {
     setEditingSlider(null);
@@ -111,7 +132,9 @@ export default function HeroSliderList() {
   };
 
   // Quick Move Up / Down
-  const handleMove = async (index, direction) => {
+  const handleMove = async (slider, direction) => {
+    const index = sliders.findIndex((s) => s.id === slider.id);
+    if (index === -1) return;
     const targetIndex = direction === "up" ? index - 1 : index + 1;
     if (targetIndex < 0 || targetIndex >= sliders.length) return;
 
@@ -327,8 +350,9 @@ export default function HeroSliderList() {
                   </td>
                 </tr>
               ) : (
-                sliders.map((slider, index) => {
+                paginatedSliders.map((slider, index) => {
                   const imgSrc = toAssetUrl(slider.image || slider.img);
+                  const actualIndex = sliders.findIndex((s) => s.id === slider.id);
 
                   return (
                     <tr
@@ -355,20 +379,20 @@ export default function HeroSliderList() {
                               color: "#334155",
                             }}
                           >
-                            {slider.display_order ?? index + 1}
+                            {slider.display_order ?? (actualIndex >= 0 ? actualIndex + 1 : (page - 1) * limit + index + 1)}
                           </span>
 
                           <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
                             <button
                               type="button"
-                              onClick={() => handleMove(index, "up")}
-                              disabled={index === 0 || isReordering}
+                              onClick={() => handleMove(slider, "up")}
+                              disabled={actualIndex <= 0 || isReordering}
                               aria-label="Move Up"
                               style={{
                                 border: "none",
                                 background: "none",
-                                cursor: index === 0 ? "not-allowed" : "pointer",
-                                opacity: index === 0 ? 0.25 : 0.8,
+                                cursor: actualIndex <= 0 ? "not-allowed" : "pointer",
+                                opacity: actualIndex <= 0 ? 0.25 : 0.8,
                                 padding: "2px",
                                 display: "flex",
                                 color: "#475569",
@@ -378,14 +402,14 @@ export default function HeroSliderList() {
                             </button>
                             <button
                               type="button"
-                              onClick={() => handleMove(index, "down")}
-                              disabled={index === sliders.length - 1 || isReordering}
+                              onClick={() => handleMove(slider, "down")}
+                              disabled={actualIndex === -1 || actualIndex >= sliders.length - 1 || isReordering}
                               aria-label="Move Down"
                               style={{
                                 border: "none",
                                 background: "none",
-                                cursor: index === sliders.length - 1 ? "not-allowed" : "pointer",
-                                opacity: index === sliders.length - 1 ? 0.25 : 0.8,
+                                cursor: actualIndex === -1 || actualIndex >= sliders.length - 1 ? "not-allowed" : "pointer",
+                                opacity: actualIndex === -1 || actualIndex >= sliders.length - 1 ? 0.25 : 0.8,
                                 padding: "2px",
                                 display: "flex",
                                 color: "#475569",
@@ -586,6 +610,17 @@ export default function HeroSliderList() {
             </tbody>
           </table>
         </div>
+
+        {/* Pagination */}
+        <Pagination
+          page={page}
+          totalPages={totalPages}
+          total={sliders.length}
+          limit={limit}
+          onPageChange={setPage}
+          itemLabel="sliders"
+          className="p-3 border-top"
+        />
       </div>
 
       {/* Add / Edit Slider Modal */}

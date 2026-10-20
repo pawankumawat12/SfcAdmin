@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import {
   Plus,
   Pencil,
@@ -17,6 +17,7 @@ import Button from "../../components/ui/Button";
 import SearchInput from "../../components/ui/SearchInput";
 import Select from "../../components/ui/Select";
 import ConfirmDialog from "../../components/ui/ConfirmDialog";
+import Pagination from "../../components/ui/Pagination";
 import TestimonialModal from "./TestimonialModal";
 import TestimonialHeaderModal from "./TestimonialHeaderModal";
 import useDebouncedValue from "../../utils/useDebouncedValue";
@@ -68,6 +69,26 @@ export default function TestimonialList() {
         : "5.0",
   };
 
+  const [page, setPage] = useState(1);
+  const limit = 10;
+
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearch, statusFilter]);
+
+  const totalPages = Math.ceil(testimonials.length / limit) || 1;
+
+  useEffect(() => {
+    if (page > totalPages) {
+      setPage(totalPages);
+    }
+  }, [totalPages, page]);
+
+  const paginatedTestimonials = useMemo(() => {
+    const start = (page - 1) * limit;
+    return testimonials.slice(start, start + limit);
+  }, [testimonials, page, limit]);
+
   const handleOpenAdd = () => {
     setEditingItem(null);
     setModalOpen(true);
@@ -103,7 +124,9 @@ export default function TestimonialList() {
     }
   };
 
-  const handleMove = async (index, direction) => {
+  const handleMove = async (item, direction) => {
+    const index = testimonials.findIndex((t) => t.id === item.id);
+    if (index === -1) return;
     const targetIndex = direction === "up" ? index - 1 : index + 1;
     if (targetIndex < 0 || targetIndex >= testimonials.length) return;
 
@@ -111,8 +134,8 @@ export default function TestimonialList() {
     const [moved] = reordered.splice(index, 1);
     reordered.splice(targetIndex, 0, moved);
 
-    const payload = reordered.map((item, idx) => ({
-      id: item.id,
+    const payload = reordered.map((it, idx) => ({
+      id: it.id,
       display_order: idx + 1,
     }));
 
@@ -366,7 +389,7 @@ export default function TestimonialList() {
                   </td>
                 </tr>
               ) : (
-                testimonials.map((t, index) => {
+                paginatedTestimonials.map((t, index) => {
                   const isImageUrl =
                     t.avatar &&
                     (t.avatar.startsWith("http") ||
@@ -382,6 +405,7 @@ export default function TestimonialList() {
                           .join("")
                           .slice(0, 2)
                           .toUpperCase();
+                  const actualIndex = testimonials.findIndex((item) => item.id === t.id);
 
                   return (
                     <tr
@@ -408,14 +432,14 @@ export default function TestimonialList() {
                               color: "#334155",
                             }}
                           >
-                            {t.display_order ?? index + 1}
+                            {t.display_order ?? (actualIndex >= 0 ? actualIndex + 1 : (page - 1) * limit + index + 1)}
                           </span>
 
                           <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
                             <Button
                               variant="action"
-                              disabled={index === 0 || isReordering}
-                              onClick={() => handleMove(index, "up")}
+                              disabled={actualIndex <= 0 || isReordering}
+                              onClick={() => handleMove(t, "up")}
                               title="Move Up"
                               aria-label="Move Up"
                               style={{ width: "20px", height: "14px", padding: 0, minWidth: 0 }}
@@ -424,8 +448,8 @@ export default function TestimonialList() {
                             </Button>
                             <Button
                               variant="action"
-                              disabled={index === testimonials.length - 1 || isReordering}
-                              onClick={() => handleMove(index, "down")}
+                              disabled={actualIndex === -1 || actualIndex >= testimonials.length - 1 || isReordering}
+                              onClick={() => handleMove(t, "down")}
                               title="Move Down"
                               aria-label="Move Down"
                               style={{ width: "20px", height: "14px", padding: 0, minWidth: 0 }}
@@ -564,6 +588,17 @@ export default function TestimonialList() {
             </tbody>
           </table>
         </div>
+
+        {/* Pagination */}
+        <Pagination
+          page={page}
+          totalPages={totalPages}
+          total={testimonials.length}
+          limit={limit}
+          onPageChange={setPage}
+          itemLabel="reviews"
+          className="p-3 border-top"
+        />
       </div>
 
       {/* Add / Edit Review Modal */}

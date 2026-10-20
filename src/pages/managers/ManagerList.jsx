@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo, useEffect } from "react";
 import toast from "react-hot-toast";
 import {
   ShieldCheck,
@@ -31,6 +31,7 @@ import {
 } from "../../utils/managerPermissions";
 import Button from "../../components/ui/Button";
 import ConfirmDialog from "../../components/ui/ConfirmDialog";
+import Pagination from "../../components/ui/Pagination";
 
 export function ManagerList() {
   const { data, isLoading, isFetching, refetch } = useGetManagersQuery();
@@ -40,6 +41,22 @@ export function ManagerList() {
   const [deleteManager, { isLoading: isDeleting }] = useDeleteManagerMutation();
 
   const managers = data?.managers || [];
+
+  const [page, setPage] = useState(1);
+  const limit = 10;
+
+  const totalPages = Math.ceil(managers.length / limit) || 1;
+
+  useEffect(() => {
+    if (page > totalPages) {
+      setPage(totalPages);
+    }
+  }, [totalPages, page]);
+
+  const paginatedManagers = useMemo(() => {
+    const start = (page - 1) * limit;
+    return managers.slice(start, start + limit);
+  }, [managers, page, limit]);
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editingManager, setEditingManager] = useState(null);
@@ -403,6 +420,7 @@ export function ManagerList() {
             <table
               style={{
                 width: "100%",
+                minWidth: "680px",
                 borderCollapse: "collapse",
                 fontSize: "13px",
               }}
@@ -426,7 +444,7 @@ export function ManagerList() {
                 </tr>
               </thead>
               <tbody>
-                {managers.map((mgr) => {
+                {paginatedManagers.map((mgr) => {
                   const perms = normalizePermissionsArray(mgr.permissions);
                   const isActive = mgr.has_password && mgr.is_active && !mgr.is_blocked;
                   const isPending = !mgr.has_password;
@@ -659,6 +677,19 @@ export function ManagerList() {
               </tbody>
             </table>
           </div>
+        )}
+
+        {/* Pagination */}
+        {!isLoading && managers.length > 0 && (
+          <Pagination
+            page={page}
+            totalPages={totalPages}
+            total={managers.length}
+            limit={limit}
+            onPageChange={setPage}
+            itemLabel="managers"
+            className="p-3 border-top"
+          />
         )}
       </div>
 

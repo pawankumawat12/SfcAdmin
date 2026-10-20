@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import {
   Plus,
   Pencil,
@@ -20,6 +20,7 @@ import Button from "../../components/ui/Button";
 import SearchInput from "../../components/ui/SearchInput";
 import Select from "../../components/ui/Select";
 import ConfirmDialog from "../../components/ui/ConfirmDialog";
+import Pagination from "../../components/ui/Pagination";
 import ReelModal from "./ReelModal";
 import useDebouncedValue from "../../utils/useDebouncedValue";
 import {
@@ -99,6 +100,26 @@ export default function ReelsList() {
     });
   }, [reels, debouncedSearch, statusFilter, platformFilter]);
 
+  const [page, setPage] = useState(1);
+  const limit = 10;
+
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearch, statusFilter, platformFilter]);
+
+  const totalPages = Math.ceil(filteredReels.length / limit) || 1;
+
+  useEffect(() => {
+    if (page > totalPages) {
+      setPage(totalPages);
+    }
+  }, [totalPages, page]);
+
+  const paginatedReels = useMemo(() => {
+    const start = (page - 1) * limit;
+    return filteredReels.slice(start, start + limit);
+  }, [filteredReels, page, limit]);
+
   // Handlers
   const handleOpenAdd = () => {
     setEditingItem(null);
@@ -137,7 +158,9 @@ export default function ReelsList() {
     }
   };
 
-  const handleMove = async (index, direction) => {
+  const handleMove = async (reel, direction) => {
+    const index = reels.findIndex((r) => r.id === reel.id);
+    if (index === -1) return;
     const targetIndex = direction === "up" ? index - 1 : index + 1;
     if (targetIndex < 0 || targetIndex >= reels.length) return;
 
@@ -416,52 +439,54 @@ export default function ReelsList() {
                 </td>
               </tr>
             ) : (
-              filteredReels.map((reel, index) => (
-                <tr key={reel.id}>
-                  {/* Order & Up/Down Arrows */}
-                  <td style={{ padding: "14px 16px", textAlign: "center" }}>
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "6px" }}>
-                      <span
-                        style={{
-                          display: "inline-block",
-                          width: "26px",
-                          height: "26px",
-                          lineHeight: "26px",
-                          textAlign: "center",
-                          borderRadius: "6px",
-                          background: "#f1f5f9",
-                          fontWeight: 800,
-                          fontSize: "0.82rem",
-                          color: "#334155",
-                        }}
-                      >
-                        {reel.sort_order ?? index + 1}
-                      </span>
+              paginatedReels.map((reel, index) => {
+                const actualIndex = reels.findIndex((r) => r.id === reel.id);
+                return (
+                  <tr key={reel.id}>
+                    {/* Order & Up/Down Arrows */}
+                    <td style={{ padding: "14px 16px", textAlign: "center" }}>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "6px" }}>
+                        <span
+                          style={{
+                            display: "inline-block",
+                            width: "26px",
+                            height: "26px",
+                            lineHeight: "26px",
+                            textAlign: "center",
+                            borderRadius: "6px",
+                            background: "#f1f5f9",
+                            fontWeight: 800,
+                            fontSize: "0.82rem",
+                            color: "#334155",
+                          }}
+                        >
+                          {reel.sort_order ?? (actualIndex >= 0 ? actualIndex + 1 : (page - 1) * limit + index + 1)}
+                        </span>
 
-                      <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
-                        <Button
-                          variant="action"
-                          disabled={index === 0 || isReordering}
-                          onClick={() => handleMove(index, "up")}
-                          title="Move Up"
-                          aria-label="Move Up"
-                          style={{ width: "20px", height: "14px", padding: 0, minWidth: 0 }}
-                        >
-                          <ArrowUp size={11} />
-                        </Button>
-                        <Button
-                          variant="action"
-                          disabled={index === reels.length - 1 || isReordering}
-                          onClick={() => handleMove(index, "down")}
-                          title="Move Down"
-                          aria-label="Move Down"
-                          style={{ width: "20px", height: "14px", padding: 0, minWidth: 0 }}
-                        >
-                          <ArrowDown size={11} />
-                        </Button>
+                        <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+                          <Button
+                            variant="action"
+                            disabled={actualIndex <= 0 || isReordering}
+                            onClick={() => handleMove(reel, "up")}
+                            title="Move Up"
+                            aria-label="Move Up"
+                            style={{ width: "20px", height: "14px", padding: 0, minWidth: 0 }}
+                          >
+                            <ArrowUp size={11} />
+                          </Button>
+                          <Button
+                            variant="action"
+                            disabled={actualIndex === -1 || actualIndex >= reels.length - 1 || isReordering}
+                            onClick={() => handleMove(reel, "down")}
+                            title="Move Down"
+                            aria-label="Move Down"
+                            style={{ width: "20px", height: "14px", padding: 0, minWidth: 0 }}
+                          >
+                            <ArrowDown size={11} />
+                          </Button>
+                        </div>
                       </div>
-                    </div>
-                  </td>
+                    </td>
 
                   {/* Thumbnail */}
                   <td style={{ padding: "14px 16px" }}>
@@ -639,11 +664,23 @@ export default function ReelsList() {
                     </div>
                   </td>
                 </tr>
-              ))
+                );
+              })
             )}
           </tbody>
         </table>
         </div>
+
+        {/* Pagination */}
+        <Pagination
+          page={page}
+          totalPages={totalPages}
+          total={filteredReels.length}
+          limit={limit}
+          onPageChange={setPage}
+          itemLabel="reels"
+          className="p-3 border-top"
+        />
       </div>
 
       {/* Form Modal */}

@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import {
   X,
   Search,
@@ -17,6 +17,7 @@ import { useDeleteProductMutation, useUpdateProductMutation } from "../../servic
 import toAssetUrl from "../../utils/assetUrl";
 import useDebouncedValue from "../../utils/useDebouncedValue";
 import ConfirmDialog from "../../components/ui/ConfirmDialog";
+import Pagination from "../../components/ui/Pagination";
 
 export default function PosManageProductsModal({
   isOpen,
@@ -52,6 +53,26 @@ export default function PosManageProductsModal({
         item.barcode?.toLowerCase().includes(query)
     );
   }, [posOnlyItems, debouncedSearchTerm]);
+
+  const [page, setPage] = useState(1);
+  const limit = 10;
+
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearchTerm]);
+
+  const totalPages = Math.ceil(filteredItems.length / limit) || 1;
+
+  useEffect(() => {
+    if (page > totalPages) {
+      setPage(totalPages);
+    }
+  }, [totalPages, page]);
+
+  const paginatedItems = useMemo(() => {
+    const start = (page - 1) * limit;
+    return filteredItems.slice(start, start + limit);
+  }, [filteredItems, page, limit]);
 
   const handleDeleteConfirm = async () => {
     if (!itemToDelete) return;
@@ -150,8 +171,8 @@ export default function PosManageProductsModal({
           </div>
 
           {/* Search bar & summary */}
-          <div className="p-3 border-bottom bg-light d-flex align-items-center justify-content-between gap-3">
-            <div className="position-relative flex-grow-1" style={{ maxWidth: "380px" }}>
+          <div className="p-3 border-bottom bg-light d-flex flex-wrap align-items-center justify-content-between gap-2">
+            <div className="position-relative flex-grow-1" style={{ maxWidth: "380px", minWidth: "200px" }}>
               <Search
                 size={16}
                 className="position-absolute top-50 translate-middle-y text-muted"
@@ -180,7 +201,7 @@ export default function PosManageProductsModal({
           </div>
 
           {/* Items List */}
-          <div className="p-3 overflow-y-auto flex-grow-1">
+          <div className="p-3 overflow-y-auto flex-grow-1" style={{ overflowX: "hidden" }}>
             {filteredItems.length === 0 ? (
               <div className="text-center py-5">
                 <div
@@ -206,8 +227,9 @@ export default function PosManageProductsModal({
                 </button>
               </div>
             ) : (
-              <div className="table-responsive">
-                <table className="table table-hover align-middle mb-0">
+              <>
+                <div className="table-responsive">
+                  <table className="table table-hover align-middle mb-0" style={{ minWidth: "640px" }}>
                   <thead className="table-light text-secondary small text-uppercase fw-semibold">
                     <tr>
                       <th style={{ width: "50px" }}>Item</th>
@@ -220,7 +242,7 @@ export default function PosManageProductsModal({
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredItems.map((item) => {
+                    {paginatedItems.map((item) => {
                       let imgUrl = "";
                       if (item.images) {
                         try {
@@ -386,6 +408,18 @@ export default function PosManageProductsModal({
                   </tbody>
                 </table>
               </div>
+
+                {/* Pagination */}
+                <Pagination
+                  page={page}
+                  totalPages={totalPages}
+                  total={filteredItems.length}
+                  limit={limit}
+                  onPageChange={setPage}
+                  itemLabel="POS products"
+                  className="mt-3 pt-2 border-top"
+                />
+              </>
             )}
           </div>
 
