@@ -15,6 +15,8 @@ import {
   useSendEmailOtpMutation,
   useUpdateEmailSettingsMutation,
   useTestEmailMutation,
+  useGetPaymentSettingsQuery,
+  useUpdatePaymentSettingsMutation,
 } from "../../services/settingsApi";
 import toast from "react-hot-toast";
 import {
@@ -372,6 +374,93 @@ export default function Settings() {
         text: err?.data?.message || "Failed to update footer settings",
         type: "error",
       });
+    }
+  };
+
+
+  /* ─── PAYMENT GATEWAY (RAZORPAY) CONFIGURATION STATE ─── */
+  const { data: paymentResponse, isLoading: paymentLoading } = useGetPaymentSettingsQuery();
+  const [updatePaymentSettings, { isLoading: paymentSaving }] = useUpdatePaymentSettingsMutation();
+
+  const [paymentForm, setPaymentForm] = useState({
+    key_id: "",
+    key_secret: "",
+    webhook_secret: "",
+    is_enabled: true,
+  });
+  const [isEditingKeySecret, setIsEditingKeySecret] = useState(false);
+  const [showKeySecret, setShowKeySecret] = useState(false);
+  const [paymentStatus, setPaymentStatus] = useState({ text: "", type: "" });
+
+  useEffect(() => {
+    if (paymentResponse?.data) {
+      setPaymentForm({
+        key_id: paymentResponse.data.key_id || "",
+        key_secret: paymentResponse.data.key_secret || "",
+        webhook_secret: paymentResponse.data.webhook_secret || "",
+        is_enabled: paymentResponse.data.is_enabled !== false,
+      });
+      setIsEditingKeySecret(false);
+    }
+  }, [paymentResponse]);
+
+  const handlePaymentChange = (field) => (e) => {
+    const value = e.target.type === "checkbox" ? e.target.checked : e.target.value;
+    setPaymentForm((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const handleSavePaymentSettings = async (e) => {
+    if (e) e.preventDefault();
+    try {
+      setPaymentStatus({ text: "", type: "" });
+
+      if (paymentForm.key_id && !paymentForm.key_id.startsWith("rzp_test_") && !paymentForm.key_id.startsWith("rzp_live_")) {
+        setPaymentStatus({
+          text: "Invalid Razorpay Key ID. It should begin with 'rzp_test_' or 'rzp_live_'.",
+          type: "error",
+        });
+        toast.error("Invalid Razorpay Key ID");
+        return;
+      }
+
+      const payload = {
+        key_id: paymentForm.key_id.trim(),
+        key_secret: isEditingKeySecret ? paymentForm.key_secret.trim() : undefined,
+        webhook_secret: paymentForm.webhook_secret.trim(),
+        is_enabled: paymentForm.is_enabled,
+      };
+
+      const result = await updatePaymentSettings(payload).unwrap();
+      toast.success(result.message || "Payment settings updated successfully!");
+      setPaymentStatus({
+        text: result.message || "Payment settings updated successfully!",
+        type: "success",
+      });
+      setIsEditingKeySecret(false);
+    } catch (err) {
+      const msg = err?.data?.message || err?.message || "Failed to update payment settings.";
+      setPaymentStatus({ text: msg, type: "error" });
+      toast.error(msg);
+    }
+  };
+
+  const handleResetPaymentSettings = async () => {
+    if (!window.confirm("Are you sure you want to revert to the server environment (.env) Razorpay keys?")) {
+      return;
+    }
+    try {
+      setPaymentStatus({ text: "", type: "" });
+      const result = await updatePaymentSettings({ reset_to_env: true }).unwrap();
+      toast.success(result.message || "Reverted to environment defaults.");
+      setPaymentStatus({
+        text: "Payment settings reverted to environment defaults.",
+        type: "success",
+      });
+      setIsEditingKeySecret(false);
+    } catch (err) {
+      const msg = err?.data?.message || err?.message || "Failed to reset payment settings.";
+      setPaymentStatus({ text: msg, type: "error" });
+      toast.error(msg);
     }
   };
 
@@ -1686,6 +1775,298 @@ export default function Settings() {
           </div>
         </div>
       )}
+
+
+      {/* ─── PAYMENT GATEWAY (RAZORPAY) SETTINGS ─── */}
+      <section
+        className="card border-0 shadow-sm p-4 mb-4"
+        style={{
+          border: "1px solid #e2e8f0",
+          borderRadius: "16px",
+          background: "#ffffff",
+          boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "flex-start",
+            flexWrap: "wrap",
+            gap: "12px",
+            borderBottom: "1px solid #f1f5f9",
+            paddingBottom: "16px",
+            marginBottom: "20px",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+            <div
+              style={{
+                width: "44px",
+                height: "44px",
+                borderRadius: "12px",
+                backgroundColor: "#e0f2fe",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                color: "#0284c7",
+              }}
+            >
+              <CreditCard size={22} />
+            </div>
+            <div>
+              <h2
+                style={{
+                  margin: 0,
+                  fontSize: "16px",
+                  fontWeight: 700,
+                  color: "#1e293b",
+                }}
+              >
+                Payment Gateway Settings (Razorpay)
+              </h2>
+              <p style={{ margin: "2px 0 0", fontSize: "12px", color: "#64748b" }}>
+                Configure Razorpay credentials for online orders. If empty, server .env fallback is used automatically.
+              </p>
+            </div>
+          </div>
+
+          <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+            <span
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "5px",
+                padding: "4px 10px",
+                borderRadius: "20px",
+                fontSize: "11px",
+                fontWeight: 600,
+                backgroundColor:
+                  paymentResponse?.data?.source === "database"
+                    ? "#dcfce7"
+                    : "#f1f5f9",
+                color:
+                  paymentResponse?.data?.source === "database"
+                    ? "#15803d"
+                    : "#475569",
+                border:
+                  paymentResponse?.data?.source === "database"
+                    ? "1px solid #bbf7d0"
+                    : "1px solid #e2e8f0",
+              }}
+            >
+              <Server size={12} />
+              {paymentResponse?.data?.source === "database"
+                ? "Custom Database Keys Active"
+                : "Using Server .env Fallback"}
+            </span>
+
+            <span
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "5px",
+                padding: "4px 10px",
+                borderRadius: "20px",
+                fontSize: "11px",
+                fontWeight: 600,
+                backgroundColor: paymentForm.is_enabled ? "#dcfce7" : "#fee2e2",
+                color: paymentForm.is_enabled ? "#16a34a" : "#dc2626",
+                border: paymentForm.is_enabled
+                  ? "1px solid #bbf7d0"
+                  : "1px solid #fecaca",
+              }}
+            >
+              <ShieldCheck size={12} />
+              {paymentForm.is_enabled ? "Online Payment Active" : "Online Payment Disabled"}
+            </span>
+          </div>
+        </div>
+
+        <StatusBanner text={paymentStatus.text} type={paymentStatus.type} />
+
+        <div style={{ display: "flex", flexDirection: "column", gap: "16px", marginBottom: "20px" }}>
+          {/* Key ID */}
+          <div>
+            <label style={sectionLabel}>
+              <Key size={13} style={{ marginRight: "4px", verticalAlign: "middle" }} />
+              Razorpay Key ID
+            </label>
+            <input
+              type="text"
+              value={paymentForm.key_id}
+              onChange={handlePaymentChange("key_id")}
+              placeholder="e.g. rzp_test_... or rzp_live_..."
+              style={inputStyle}
+            />
+            <p style={{ fontSize: "11px", color: "#64748b", margin: "4px 0 0" }}>
+              Public Key ID from Razorpay Dashboard. Starts with <code>rzp_test_</code> or <code>rzp_live_</code>.
+            </p>
+          </div>
+
+          {/* Key Secret */}
+          <div>
+            <label style={sectionLabel}>
+              <Lock size={13} style={{ marginRight: "4px", verticalAlign: "middle" }} />
+              Razorpay Key Secret
+            </label>
+            <div style={{ display: "flex", gap: "8px" }}>
+              <div style={{ position: "relative", flex: 1 }}>
+                <input
+                  type={showKeySecret ? "text" : "password"}
+                  value={paymentForm.key_secret}
+                  onChange={handlePaymentChange("key_secret")}
+                  placeholder={isEditingKeySecret ? "Enter new Key Secret" : "••••••••"}
+                  disabled={!isEditingKeySecret && Boolean(paymentResponse?.data?.is_key_secret_set)}
+                  style={{
+                    ...inputStyle,
+                    paddingRight: "40px",
+                    backgroundColor:
+                      !isEditingKeySecret && Boolean(paymentResponse?.data?.is_key_secret_set)
+                        ? "#f8fafc"
+                        : "#ffffff",
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowKeySecret((prev) => !prev)}
+                  style={{
+                    position: "absolute",
+                    right: "10px",
+                    top: "50%",
+                    transform: "translateY(-50%)",
+                    background: "none",
+                    border: "none",
+                    cursor: "pointer",
+                    color: "#94a3b8",
+                  }}
+                  title={showKeySecret ? "Hide secret" : "Show secret"}
+                >
+                  {showKeySecret ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
+              </div>
+
+              {Boolean(paymentResponse?.data?.is_key_secret_set) && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    setIsEditingKeySecret((prev) => !prev);
+                    if (isEditingKeySecret) {
+                      setPaymentForm((prev) => ({
+                        ...prev,
+                        key_secret: paymentResponse?.data?.key_secret || "",
+                      }));
+                    } else {
+                      setPaymentForm((prev) => ({ ...prev, key_secret: "" }));
+                    }
+                  }}
+                  style={{ whiteSpace: "nowrap", fontSize: "12px", height: "40px" }}
+                >
+                  {isEditingKeySecret ? "Cancel" : "Change Secret"}
+                </Button>
+              )}
+            </div>
+            <p style={{ fontSize: "11px", color: "#64748b", margin: "4px 0 0" }}>
+              Private Key Secret. Masked for security. Required for generating and verifying payments.
+            </p>
+          </div>
+
+          {/* Webhook Secret */}
+          <div>
+            <label style={sectionLabel}>
+              <ShieldCheck size={13} style={{ marginRight: "4px", verticalAlign: "middle" }} />
+              Razorpay Webhook Secret (Optional)
+            </label>
+            <input
+              type="text"
+              value={paymentForm.webhook_secret}
+              onChange={handlePaymentChange("webhook_secret")}
+              placeholder="Enter webhook secret from Razorpay Dashboard"
+              style={inputStyle}
+            />
+            <p style={{ fontSize: "11px", color: "#64748b", margin: "4px 0 0" }}>
+              Used to cryptographically verify Razorpay webhooks. If left empty, fallback to Key Secret is used.
+            </p>
+          </div>
+
+          {/* Enable Online Payments Toggle */}
+          <div
+            style={{
+              padding: "12px 16px",
+              backgroundColor: "#f8fafc",
+              borderRadius: "10px",
+              border: "1px solid #e2e8f0",
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+            }}
+          >
+            <div>
+              <span style={{ fontSize: "13px", fontWeight: 600, color: "#334155" }}>
+                Enable Online Payments via Razorpay
+              </span>
+              <p style={{ margin: "2px 0 0", fontSize: "11px", color: "#64748b" }}>
+                When disabled, customers can only select Cash on Delivery at checkout.
+              </p>
+            </div>
+            <label style={{ display: "flex", alignItems: "center", cursor: "pointer", margin: 0 }}>
+              <input
+                type="checkbox"
+                checked={paymentForm.is_enabled}
+                onChange={handlePaymentChange("is_enabled")}
+                style={{ width: "18px", height: "18px", cursor: "pointer" }}
+              />
+            </label>
+          </div>
+        </div>
+
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "10px" }}>
+          {paymentResponse?.data?.source === "database" ? (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handleResetPaymentSettings}
+              disabled={paymentSaving}
+              style={{
+                fontSize: "12px",
+                color: "#64748b",
+                borderColor: "#cbd5e1",
+              }}
+            >
+              Reset to Server .env Keys
+            </Button>
+          ) : <div />}
+
+          <Button
+            type="button"
+            onClick={handleSavePaymentSettings}
+            disabled={paymentSaving || paymentLoading}
+            style={{
+              minWidth: "180px",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: "8px",
+              backgroundColor: "#0284c7",
+              borderColor: "#0284c7",
+              color: "#ffffff",
+            }}
+          >
+            {paymentSaving ? (
+              <>
+                <RefreshCw size={16} className="animate-spin" />
+                Saving...
+              </>
+            ) : (
+              <>
+                <Check size={16} />
+                Save Payment Settings
+              </>
+            )}
+          </Button>
+        </div>
+      </section>
 
       <form onSubmit={handleSubmit(onSubmitPricing)}>
         <section className="card border-0 shadow-sm p-4">

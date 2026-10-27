@@ -31,42 +31,42 @@ export const settingsApi = baseApi.injectEndpoints({
       providesTags: ["Settings"],
     }),
     updateLogo: build.mutation({
-      query: (formData) => ({
+      query: (body) => ({
         url: "/settings/logo",
         method: "PUT",
-        body: formData,
+        body,
       }),
       invalidatesTags: ["Settings"],
     }),
-
     getSettingPricing: build.query({
-      query: () => '/settings/order-pricing',
+      query: () => "/settings/order-pricing",
       providesTags: ["Settings"],
     }),
     updateSettingPricing: build.mutation({
       query: (body) => ({
         url: "/settings/order-pricing",
         method: "PUT",
-        body
+        body,
       }),
       invalidatesTags: ["Settings"],
     }),
 
+    // SMTP Settings
     getSmtp: build.query({
-      query: () => "/settings/email",
-      providesTags: ["Settings", "EmailSettings"],
+      query: () => "/settings/smtp",
+      providesTags: ["Settings", "Smtp"],
     }),
     updateSmtp: build.mutation({
       query: (body) => ({
-        url: "/settings/email",
+        url: "/settings/smtp",
         method: "PUT",
         body,
       }),
-      invalidatesTags: ["Settings", "EmailSettings"],
+      invalidatesTags: ["Settings", "Smtp"],
     }),
     testSmtp: build.mutation({
       query: (body) => ({
-        url: "/settings/email/test",
+        url: "/settings/smtp/test",
         method: "POST",
         body,
       }),
@@ -111,6 +111,20 @@ export const settingsApi = baseApi.injectEndpoints({
       }),
       invalidatesTags: ["Settings", "StoreStatus"],
     }),
+
+    // Payment Gateway Settings (Razorpay)
+    getPaymentSettings: build.query({
+      query: () => "/settings/payment",
+      providesTags: ["Settings", "PaymentSettings"],
+    }),
+    updatePaymentSettings: build.mutation({
+      query: (body) => ({
+        url: "/settings/payment",
+        method: "PUT",
+        body,
+      }),
+      invalidatesTags: ["Settings", "PaymentSettings"],
+    }),
   }),
 });
 
@@ -132,4 +146,6 @@ export const {
   useTestEmailMutation,
   useGetStoreStatusQuery,
   useUpdateStoreStatusMutation,
+  useGetPaymentSettingsQuery,
+  useUpdatePaymentSettingsMutation,
 } = settingsApi;
