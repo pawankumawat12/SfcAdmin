@@ -161,6 +161,9 @@ export default function HeroSliderModal({
       onMouseDown={(e) => {
         if (e.target === e.currentTarget && !isSubmitting) onClose();
       }}
+      onClick={(e) => {
+        if (e.target === e.currentTarget && !isSubmitting) onClose();
+      }}
     >
       <div
         className="card"

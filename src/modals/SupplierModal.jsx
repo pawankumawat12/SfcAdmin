@@ -8,6 +8,8 @@ import {
   useCreateSupplierMutation,
   useUpdateSupplierMutation,
 } from "../services/inventoryApi";
+import { isValidIndianPhone, sanitizePhoneInput } from "../utils/phoneValidation";
+import { useThrottledCallback } from "../utils/throttle";
 
 export default function SupplierModal({
   isOpen,
@@ -15,8 +17,10 @@ export default function SupplierModal({
   supplier = null,
   onSuccess = null,
 }) {
-  const [createSupplier, { isLoading: isCreating }] = useCreateSupplierMutation();
-  const [updateSupplier, { isLoading: isUpdating }] = useUpdateSupplierMutation();
+  const [createSupplier, { isLoading: isCreating }] =
+    useCreateSupplierMutation();
+  const [updateSupplier, { isLoading: isUpdating }] =
+    useUpdateSupplierMutation();
 
   const [formData, setFormData] = useState({
     name: "",
@@ -41,7 +45,8 @@ export default function SupplierModal({
         address: supplier.address || "",
         gstin: supplier.gstin || "",
         notes: supplier.notes || "",
-        is_active: supplier.is_active !== undefined ? Boolean(supplier.is_active) : true,
+        is_active:
+          supplier.is_active !== undefined ? Boolean(supplier.is_active) : true,
       });
     } else {
       setFormData({
@@ -57,8 +62,6 @@ export default function SupplierModal({
     }
     setErrorMsg("");
   }, [supplier, isOpen]);
-
-  if (!isOpen) return null;
 
   const isEdit = Boolean(supplier?.id);
   const isLoading = isCreating || isUpdating;
@@ -78,9 +81,22 @@ export default function SupplierModal({
       return;
     }
 
+    if (formData.phone && formData.phone.trim() && !isValidIndianPhone(formData.phone)) {
+      setErrorMsg("Please enter a valid 10-digit phone number starting with 6, 7, 8, or 9");
+      return;
+    }
+
+    if (formData.email && formData.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email.trim())) {
+      setErrorMsg("Please enter a valid email address");
+      return;
+    }
+
     try {
       if (isEdit) {
-        const res = await updateSupplier({ id: supplier.id, ...formData }).unwrap();
+        const res = await updateSupplier({
+          id: supplier.id,
+          ...formData,
+        }).unwrap();
         toast.success("Supplier updated successfully");
         if (onSuccess) onSuccess(res.data);
       } else {
@@ -92,15 +108,21 @@ export default function SupplierModal({
     } catch (err) {
       const msg = err?.data?.message || "Failed to save supplier";
       setErrorMsg(msg);
-      toast.error(msg);
     }
   };
+
+  const throttledSubmit = useThrottledCallback(handleSubmit, 2000);
+
+  if (!isOpen) return null;
 
   return (
     <div
       className="modal-backdrop"
       style={{ zIndex: 1100 }}
       onMouseDown={(e) => {
+        if (e.target === e.currentTarget && !isLoading) onClose();
+      }}
+      onClick={(e) => {
         if (e.target === e.currentTarget && !isLoading) onClose();
       }}
     >
@@ -127,11 +149,13 @@ export default function SupplierModal({
         <h2 id="supplier-modal-title">
           {isEdit ? "Edit Supplier" : "Add New Supplier"}
         </h2>
-        <p>Manage vendor directory details, tax GSTIN, and contact information.</p>
+        <p>
+          Manage vendor directory details, tax GSTIN, and contact information.
+        </p>
 
         {errorMsg && <div className="confirm-error">{errorMsg}</div>}
 
-        <form className="entity-form" onSubmit={handleSubmit}>
+        <form className="entity-form" onSubmit={throttledSubmit}>
           <div className="form-grid">
             <label className="full">
               Supplier / Company Name *
@@ -162,10 +186,11 @@ export default function SupplierModal({
               <Input
                 type="tel"
                 placeholder="e.g. 9876543210"
+                maxLength={10}
                 value={formData.phone}
-                onChange={(e) => handleChange("phone", e.target.value)}
+                onChange={(e) => handleChange("phone", sanitizePhoneInput(e.target.value))}
               />
-              <small className="muted">Direct phone or mobile</small>
+              <small className="muted">Direct 10-digit phone or mobile</small>
             </label>
 
             <label>
@@ -205,12 +230,16 @@ export default function SupplierModal({
               Status
               <Select
                 value={formData.is_active ? "true" : "false"}
-                onChange={(e) => handleChange("is_active", e.target.value === "true")}
+                onChange={(e) =>
+                  handleChange("is_active", e.target.value === "true")
+                }
               >
                 <option value="true">Active</option>
                 <option value="false">Inactive</option>
               </Select>
-              <small className="muted">Active suppliers can be linked to ingredients</small>
+              <small className="muted">
+                Active suppliers can be linked to ingredients
+              </small>
             </label>
 
             <label className="full">

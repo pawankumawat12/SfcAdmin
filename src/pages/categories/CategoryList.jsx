@@ -169,6 +169,38 @@ export default function CategoryList() {
           <Plus size={18} /> Add category
         </Button>
       </div>
+
+      {/* Top Metric Cards */}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+          gap: "16px",
+          marginBottom: "20px",
+        }}
+      >
+        <div className="card" style={{ padding: "18px 20px", borderLeft: "4px solid #6253e8" }}>
+          <span style={{ fontSize: "12px", fontWeight: 600, color: "#6253e8" }}>Total Categories</span>
+          <div style={{ fontSize: "24px", fontWeight: 800, color: "#111827", marginTop: "4px" }}>
+            {categoryResponse?.summary?.total ?? pagination?.totalItems ?? categories.length}
+          </div>
+        </div>
+
+        <div className="card" style={{ padding: "18px 20px", borderLeft: "4px solid #16a34a" }}>
+          <span style={{ fontSize: "12px", fontWeight: 600, color: "#16a34a" }}>Active Categories</span>
+          <div style={{ fontSize: "24px", fontWeight: 800, color: "#16a34a", marginTop: "4px" }}>
+            {categoryResponse?.summary?.active ?? categories.filter((c) => c.is_active).length}
+          </div>
+        </div>
+
+        <div className="card" style={{ padding: "18px 20px", borderLeft: "4px solid #dc2626" }}>
+          <span style={{ fontSize: "12px", fontWeight: 600, color: "#dc2626" }}>Inactive Categories</span>
+          <div style={{ fontSize: "24px", fontWeight: 800, color: "#dc2626", marginTop: "4px" }}>
+            {categoryResponse?.summary?.inactive ?? categories.filter((c) => !c.is_active).length}
+          </div>
+        </div>
+      </div>
+
       <div className="card table-card">
         <div className="table-toolbar">
           <SearchInput

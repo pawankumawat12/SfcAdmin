@@ -2,11 +2,10 @@ import { useState, useEffect, useRef } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
 import toast from "react-hot-toast";
-import { signOut } from "../context/authSlice";
+import { signOut, setUser } from "../context/authSlice";
 import { useLogoutMutation } from "../services/authApi";
 import ConfirmDialog from "../components/ui/ConfirmDialog";
 import Button from "../components/ui/Button";
-import SearchInput from "../components/ui/SearchInput";
 import {
   Bell,
   ChevronDown,
@@ -36,6 +35,12 @@ import {
   UtensilsCrossed,
   Truck,
   History,
+  Store,
+  MapPin,
+  Film,
+  Code,
+  Calculator,
+  ShieldCheck,
 } from "lucide-react";
 import { baseApi } from "../services/baseApi";
 import {
@@ -43,95 +48,187 @@ import {
   useGetAdminUnreadCountQuery,
   useMarkAdminNotificationReadMutation,
   useMarkAllAdminNotificationsReadMutation,
-  useRegisterAdminDeviceTokenMutation,
 } from "../services/notificationApi";
-import { getAdminSocket } from "../services/socket";
-import { requestAdminPushToken, onForegroundFcmMessage } from "../services/fcm";
+import {
+  storeApi,
+  useGetMyStoreQuery,
+  useToggleStoreStatusMutation,
+} from "../services/storeApi";
+import { settingsApi, useGetDeveloperSettingsQuery } from "../services/settingsApi";
+import { getAdminSocket, disconnectAdminSocket } from "../services/socket";
 import { toAssetUrl } from "../utils/assetUrl";
 import { useShopStatus } from "../utils/useShopStatus";
+import WhatsAppModal from "../modals/WhatsAppModal";
+import { WhatsAppIcon } from "../utils/whatsappOrder";
+import { useGetWhatsAppStatusQuery } from "../services/whatsappApi";
+import { normalizePermissionsArray } from "../utils/managerPermissions";
 
-const navigationItems = [
-  { type: "link", label: "Dashboard", to: "/", icon: LayoutDashboard },
-  {
-    type: "group",
-    id: "catalog",
-    label: "Menu & Catalog",
-    icon: Package,
-    children: [
-      { label: "Products", to: "/products", icon: Package },
-      { label: "Categories", to: "/categories", icon: Tags },
-    ],
-  },
-  {
-    type: "group",
-    id: "inventory",
-    label: "Raw Materials & BOM",
-    icon: Boxes,
-    children: [
-      { label: "Raw Materials", to: "/inventory/ingredients", icon: Boxes },
-      { label: "Product Recipes", to: "/inventory/recipes", icon: UtensilsCrossed },
-      { label: "Suppliers & Vendors", to: "/inventory/suppliers", icon: Truck },
-      { label: "Stock Movement Logs", to: "/inventory/logs", icon: History },
-    ],
-  },
-  {
-    type: "group",
-    id: "storefront",
-    label: "Storefront & Content",
-    icon: SlidersHorizontal,
-    children: [
-      { label: "Hero Sliders", to: "/hero-sliders", icon: SlidersHorizontal },
-      { label: "Why Choose Us", to: "/why-choose-us", icon: Sparkles },
-      { label: "Customer Love", to: "/testimonials", icon: Heart },
-      { label: "CMS Pages", to: "/cms-pages", icon: FileText },
-    ],
-  },
-  {
-    type: "group",
-    id: "sales",
-    label: "Orders & Deals",
-    icon: ShoppingBag,
-    children: [
-      { label: "All Orders", to: "/orders", icon: ShoppingBag },
-      { label: "Offers & Deals", to: "/offers", icon: BadgePercent },
-    ],
-  },
-  {
-    type: "group",
-    id: "customers",
-    label: "Customers & CRM",
-    icon: Users,
-    children: [
-      { label: "Customer Accounts", to: "/customers", icon: Users },
-      { label: "Customer Reviews", to: "/reviews", icon: Star },
-      { label: "Contact Messages", to: "/messages", icon: MessageSquare },
-    ],
-  },
-  {
-    type: "group",
-    id: "email",
-    label: "Email Management",
-    icon: Mail,
-    children: [
-      { label: "Email Templates", to: "/email-templates", icon: FileText },
-      { label: "Email Activity Logs", to: "/email-logs", icon: Mail },
-    ],
-  },
-  {
-    type: "group",
-    id: "system",
-    label: "System & Settings",
-    icon: Settings,
-    children: [
-      { label: "General Settings", to: "/settings", icon: Settings },
-      { label: "Admin Profile", to: "/profile", icon: UserRound },
-      { label: "Favourites", to: "/favourites", icon: Heart },
-    ],
-  },
-];
+const getNavigationItems = (role, permissions = []) => {
+  if (role === "store_owner") {
+    return [
+      { type: "link", label: "Dashboard", to: "/", icon: LayoutDashboard },
+      { type: "link", label: "POS Counter", to: "/pos", icon: Calculator },
+      {
+        type: "group",
+        id: "catalog",
+        label: "Store Catalog",
+        icon: Package,
+        children: [
+          { label: "My Products", to: "/products", icon: Package },
+        ],
+      },
+      {
+        type: "group",
+        id: "sales",
+        label: "Store Orders",
+        icon: ShoppingBag,
+        children: [
+          { label: "All Orders", to: "/orders", icon: ShoppingBag },
+        ],
+      },
+      {
+        type: "group",
+        id: "store_mgmt",
+        label: "Store Settings",
+        icon: Store,
+        children: [
+          { label: "Store Location & Radius", to: "/store-location", icon: MapPin },
+        ],
+      },
+      {
+        type: "group",
+        id: "system",
+        label: "Account",
+        icon: Settings,
+        children: [
+          { label: "My Profile", to: "/profile", icon: UserRound },
+        ],
+      },
+    ];
+  }
+
+  // Administrator & Manager navigation
+  const allAdminItems = [
+    { type: "link", label: "Dashboard", to: "/", icon: LayoutDashboard, permissionKey: "dashboard" },
+    { type: "link", label: "POS Counter", to: "/pos", icon: Calculator, permissionKey: "pos" },
+    {
+      type: "group",
+      id: "catalog",
+      label: "Menu & Catalog",
+      icon: Package,
+      children: [
+        { label: "Products", to: "/products", icon: Package, permissionKey: "products" },
+        { label: "Categories", to: "/categories", icon: Tags, permissionKey: "categories" },
+      ],
+    },
+    {
+      type: "group",
+      id: "sales",
+      label: "Orders & Deals",
+      icon: ShoppingBag,
+      children: [
+        { label: "All Orders", to: "/orders", icon: ShoppingBag, permissionKey: "orders" },
+        { label: "Offers & Deals", to: "/offers", icon: BadgePercent, permissionKey: "offers" },
+      ],
+    },
+    {
+      type: "group",
+      id: "stores",
+      label: "Branches & Owners",
+      icon: Store,
+      children: [
+        { label: "Stores & Partners", to: "/stores", icon: Store, permissionKey: "stores" },
+      ],
+    },
+    {
+      type: "group",
+      id: "inventory",
+      label: "Raw Materials & BOM",
+      icon: Boxes,
+      children: [
+        { label: "Raw Materials", to: "/inventory/ingredients", icon: Boxes, permissionKey: "inventory_ingredients" },
+        { label: "Product Recipes", to: "/inventory/recipes", icon: UtensilsCrossed, permissionKey: "inventory_recipes" },
+        { label: "Suppliers & Vendors", to: "/inventory/suppliers", icon: Truck, permissionKey: "inventory_suppliers" },
+        { label: "Stock Movement Logs", to: "/inventory/logs", icon: History, permissionKey: "inventory_logs" },
+      ],
+    },
+    {
+      type: "group",
+      id: "storefront",
+      label: "Storefront & Content",
+      icon: SlidersHorizontal,
+      children: [
+        { label: "Hero Sliders", to: "/hero-sliders", icon: SlidersHorizontal, permissionKey: "hero_sliders" },
+        { label: "Why Choose Us", to: "/why-choose-us", icon: Sparkles, permissionKey: "why_choose_us" },
+        { label: "Customer Love", to: "/testimonials", icon: Heart, permissionKey: "testimonials" },
+        { label: "Reels & Videos", to: "/reels", icon: Film, permissionKey: "reels" },
+        { label: "CMS Pages", to: "/cms-pages", icon: FileText, permissionKey: "cms_pages" },
+      ],
+    },
+    {
+      type: "group",
+      id: "customers",
+      label: "Customers & CRM",
+      icon: Users,
+      children: [
+        { label: "Customer Accounts", to: "/customers", icon: Users, permissionKey: "customers" },
+        { label: "Customer Reviews", to: "/reviews", icon: Star, permissionKey: "reviews" },
+        { label: "Contact Messages", to: "/messages", icon: MessageSquare, permissionKey: "messages" },
+      ],
+    },
+    {
+      type: "group",
+      id: "email",
+      label: "Email Management",
+      icon: Mail,
+      children: [
+        { label: "Email Templates", to: "/email-templates", icon: FileText, permissionKey: "email_templates" },
+        { label: "Email Logs", to: "/email-logs", icon: Mail, permissionKey: "email_logs" },
+      ],
+    },
+    {
+      type: "group",
+      id: "system",
+      label: "System & Settings",
+      icon: Settings,
+      children: [
+        { label: "Managers & Staff", to: "/managers", icon: ShieldCheck, superAdminOnly: true },
+        { label: "General Settings", to: "/settings", icon: Settings, permissionKey: "settings" },
+        { label: role === "manager" ? "My Profile" : "Admin Profile", to: "/profile", icon: UserRound, alwaysAllow: true },
+        { label: "Favourites", to: "/favourites", icon: Heart, permissionKey: "favourites" },
+      ],
+    },
+  ];
+
+  if (role === "manager") {
+    const perms = normalizePermissionsArray(permissions);
+    return allAdminItems
+      .map((item) => {
+        if (item.type === "link") {
+          return perms.includes(item.permissionKey) ? item : null;
+        }
+        if (item.type === "group") {
+          const allowedChildren = (item.children || []).filter((child) => {
+            if (child.superAdminOnly) return false;
+            if (child.alwaysAllow) return true;
+            return perms.includes(child.permissionKey);
+          });
+          if (allowedChildren.length === 0) return null;
+          return { ...item, children: allowedChildren };
+        }
+        return null;
+      })
+      .filter(Boolean);
+  }
+
+  return allAdminItems;
+};
 
 const getPageTitle = (pathname) => {
   if (pathname === "/") return "Dashboard";
+  if (pathname.startsWith("/pos")) return "POS Counter";
+  if (pathname.startsWith("/managers")) return "Managers & Staff Access";
+  if (pathname.startsWith("/stores")) return "Store Branches & Owners";
   if (pathname.startsWith("/products/create")) return "Add Product";
   if (pathname.startsWith("/products") && pathname.includes("/edit")) return "Edit Product";
   if (pathname.startsWith("/products")) return "Products";
@@ -150,6 +247,7 @@ const getPageTitle = (pathname) => {
   if (pathname.startsWith("/hero-sliders")) return "Hero Sliders";
   if (pathname.startsWith("/why-choose-us")) return "Why Choose Us";
   if (pathname.startsWith("/testimonials")) return "Customer Love (Testimonials)";
+  if (pathname.startsWith("/reels")) return "Reels & Video Slider";
   if (pathname.startsWith("/cms-pages/create")) return "Add CMS Page";
   if (pathname.startsWith("/cms-pages") && pathname.includes("/edit")) return "Edit CMS Page";
   if (pathname.startsWith("/cms-pages")) return "CMS Pages";
@@ -172,8 +270,18 @@ export default function AdminLayout() {
   const notifRef = useRef(null);
   const profileRef = useRef(null);
   const { isOpen: isShopOpen, toggleShopStatus } = useShopStatus();
+  const [whatsappModalOpen, setWhatsappModalOpen] = useState(false);
 
   const user = useSelector((state) => state.auth.user);
+  const isAdmin = user?.role === "admin";
+  const { data: devSettingsResponse } = useGetDeveloperSettingsQuery();
+  const devSettings = devSettingsResponse?.data;
+  const { data: whatsappStatusData } = useGetWhatsAppStatusQuery(undefined, {
+    skip: !isAdmin,
+    pollingInterval: 30000,
+  });
+  const isWhatsAppConnected = Boolean(whatsappStatusData?.data?.isConnected);
+  const navigationItems = getNavigationItems(user?.role, user?.permissions);
   const dispatch = useDispatch();
   const navigate = useNavigate();
   const [logoutRequest, { isLoading: isSigningOut }] = useLogoutMutation();
@@ -203,6 +311,33 @@ export default function AdminLayout() {
 
   const title = getPageTitle(location.pathname);
 
+  // Store Owner Branch State & Control
+  const isStoreOwner = user?.role === "store_owner";
+  const { data: myStoreData } = useGetMyStoreQuery(undefined, { skip: !isStoreOwner });
+  const [toggleStoreStatus, { isLoading: isTogglingStore }] = useToggleStoreStatusMutation();
+  const myStore = myStoreData?.store;
+
+  const handleToggleMyStore = async () => {
+    if (!myStore) return;
+    const nextIsOpen = !myStore.is_open;
+    try {
+      await toggleStoreStatus({
+        id: myStore.id,
+        is_open: nextIsOpen,
+      }).unwrap();
+      toast(
+        `Branch "${myStore.name}" is now ${nextIsOpen ? "OPEN" : "CLOSED"}.`,
+        {
+          icon: nextIsOpen ? "🟢" : "🔴",
+          id: `branch-status-${myStore.id}`,
+          duration: 4000,
+        }
+      );
+    } catch (err) {
+      toast.error(err?.data?.message || "Failed to update store status");
+    }
+  };
+
   // Notifications API & Mutations
   const { data: notifData, refetch: refetchNotifs } = useGetAdminNotificationsQuery({
     limit: 15,
@@ -211,163 +346,50 @@ export default function AdminLayout() {
 
   const [markAsRead] = useMarkAdminNotificationReadMutation();
   const [markAllAsRead, { isLoading: isMarkingAll }] = useMarkAllAdminNotificationsReadMutation();
-  const [registerDeviceToken] = useRegisterAdminDeviceTokenMutation();
 
   const notifications = notifData?.data?.notifications || [];
   const unreadCount = unreadCountData?.data?.unreadCount ?? (notifData?.data?.unreadCount || 0);
-
-  // FCM Push Notification Registration & Foreground Listener
-  useEffect(() => {
-    let unsubscribeFcm = () => {};
-
-    const setupFcm = async () => {
-      try {
-        const token = await requestAdminPushToken();
-        if (token) {
-          await registerDeviceToken({
-            token,
-            deviceType: "web",
-            deviceInfo: navigator.userAgent || null,
-          }).unwrap();
-        }
-      } catch (err) {
-        console.warn("[Admin FCM Registration Notice]:", err?.message || err);
-      }
-    };
-
-    setupFcm();
-
-    // Foreground FCM push listener - trigger native system notification even when tab is active
-    unsubscribeFcm = onForegroundFcmMessage((payload) => {
-      refetchNotifs();
-      refetchUnreadCount();
-
-      const title = payload.notification?.title || payload.data?.title || "SFC Cafe";
-      const body = payload.notification?.body || payload.data?.body || "New order received";
-
-      // 1. Play chime sound
-      try {
-        const AudioCtx = window.AudioContext || window.webkitAudioContext;
-        if (AudioCtx) {
-          const ctx = new AudioCtx();
-          const osc = ctx.createOscillator();
-          const gain = ctx.createGain();
-          osc.connect(gain);
-          gain.connect(ctx.destination);
-          osc.type = "sine";
-          osc.frequency.setValueAtTime(587.33, ctx.currentTime);
-          osc.frequency.setValueAtTime(880, ctx.currentTime + 0.12);
-          gain.gain.setValueAtTime(0.2, ctx.currentTime);
-          gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.4);
-          osc.start(ctx.currentTime);
-          osc.stop(ctx.currentTime + 0.4);
-        }
-      } catch {}
-
-      // 2. Trigger native OS / browser notification even when active
-      if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted") {
-        try {
-          if ("serviceWorker" in navigator && navigator.serviceWorker.controller) {
-            navigator.serviceWorker.ready.then((reg) => {
-              reg.showNotification(title, {
-                body,
-                icon: "/favicon.svg",
-                badge: "/favicon.svg",
-                tag: payload.data?.orderId ? `order-${payload.data.orderId}` : `sfc-order-${Date.now()}`,
-                renotify: true,
-                requireInteraction: true,
-                data: {
-                  url: "/orders",
-                  orderId: payload.data?.orderId,
-                  orderNumber: payload.data?.orderNumber,
-                },
-              });
-            });
-          } else {
-            const notif = new Notification(title, {
-              body,
-              icon: "/favicon.svg",
-              badge: "/favicon.svg",
-              tag: payload.data?.orderId ? `order-${payload.data.orderId}` : `sfc-order-${Date.now()}`,
-            });
-            notif.onclick = () => {
-              window.focus();
-              navigate("/orders");
-            };
-          }
-        } catch (e) {
-          console.warn("[FCM] Native notification trigger error:", e);
-        }
-      }
-
-      // 3. In-app toast banner
-      toast.custom(
-        (t) => (
-          <div
-            style={{
-              background: "#0f172a",
-              color: "#ffffff",
-              padding: "12px 16px",
-              borderRadius: "12px",
-              boxShadow: "0 10px 25px -5px rgba(0,0,0,0.4)",
-              display: "flex",
-              alignItems: "center",
-              gap: "12px",
-              cursor: "pointer",
-              border: "1px solid #334155",
-              maxWidth: "360px",
-            }}
-            onClick={() => {
-              toast.dismiss(t.id);
-              navigate("/orders");
-            }}
-          >
-            <div
-              style={{
-                width: "32px",
-                height: "32px",
-                borderRadius: "8px",
-                background: "#4f7d16",
-                display: "grid",
-                placeItems: "center",
-                flexShrink: 0,
-              }}
-            >
-              <Bell size={16} />
-            </div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontWeight: 700, fontSize: "12px", color: "#f8fafc" }}>{title}</div>
-              <div
-                style={{
-                  fontSize: "11px",
-                  color: "#94a3b8",
-                  marginTop: "2px",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                {body}
-              </div>
-            </div>
-          </div>
-        ),
-        { duration: 5000 }
-      );
-    });
-
-    return () => {
-      if (typeof unsubscribeFcm === "function") {
-        unsubscribeFcm();
-      }
-    };
-  }, [registerDeviceToken, refetchNotifs, refetchUnreadCount, navigate]);
 
   // Real-Time Socket.IO Notification Listener
   useEffect(() => {
     const socket = getAdminSocket();
 
+    const handleSessionRevoked = (payload) => {
+      if (
+        payload?.reason !== "store_deleted" &&
+        payload?.reason !== "manager_deactivated" &&
+        payload?.reason !== "manager_deleted"
+      ) {
+        return;
+      }
+
+      localStorage.removeItem("accessToken");
+      disconnectAdminSocket();
+      dispatch(signOut());
+      dispatch(baseApi.util.resetApiState());
+      toast.error(payload.message || "Your portal access has been removed.");
+      navigate("/login", { replace: true });
+    };
+
+    const handleManagerPermissionsUpdated = (payload) => {
+      if (user && user.role === "manager" && Array.isArray(payload?.permissions)) {
+        dispatch(
+          setUser({
+            ...user,
+            permissions: payload.permissions,
+          })
+        );
+        toast.success("Your sidebar access permissions were updated by Administrator.");
+      }
+    };
+
     const handleNewNotification = (notif) => {
+      if (isStoreOwner && notif?.role && notif.role !== "store_owner") {
+        return;
+      }
+      if (!isStoreOwner && notif?.role === "store_owner") {
+        return;
+      }
       console.log("[Socket.IO Admin] New notification received:", notif);
       refetchNotifs();
       refetchUnreadCount();
@@ -398,6 +420,8 @@ export default function AdminLayout() {
                 navigate("/reviews");
               } else if (notif.type === "customer_unblock_request") {
                 navigate("/customers");
+              } else if (notif.type === "store_login_request") {
+                navigate("/stores");
               }
             }}
           >
@@ -443,16 +467,62 @@ export default function AdminLayout() {
       refetchUnreadCount();
     };
 
+    const handleBranchStatusChanged = (payload) => {
+      console.log("[Socket.IO Admin] Branch status changed:", payload);
+      dispatch(storeApi.util.invalidateTags(["Stores"]));
+      if (payload?.store_name) {
+        toast(
+          `Branch "${payload.store_name}" is now ${payload.is_open ? "OPEN" : "CLOSED"}.`,
+          {
+            icon: payload.is_open ? "🟢" : "🔴",
+            id: `branch-status-${payload.storeId || payload.id}`,
+            duration: 4000,
+          }
+        );
+      }
+    };
+
+    const handleStoreStatusChanged = (payload) => {
+      console.log("[Socket.IO Admin] Main shop status changed:", payload);
+      dispatch(settingsApi.util.invalidateTags(["Settings"]));
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(
+          new CustomEvent("sfc_shop_status_change", {
+            detail: { isOpen: Boolean(payload?.is_open) },
+          })
+        );
+      }
+      if (payload?.is_open) {
+        toast.success("Main Bakery Shop is now OPEN.", {
+          id: "main-shop-status-toast",
+          duration: 3500,
+        });
+      } else {
+        toast.error("Main Bakery Shop is now CLOSED.", {
+          id: "main-shop-status-toast",
+          duration: 3500,
+        });
+      }
+    };
+
     socket.on("notification:new", handleNewNotification);
     socket.on("notification:unread_count", handleUnreadCount);
     socket.on("new_order", handleNewOrder);
+    socket.on("session:revoked", handleSessionRevoked);
+    socket.on("manager:permissions_updated", handleManagerPermissionsUpdated);
+    socket.on("branch_status_changed", handleBranchStatusChanged);
+    socket.on("store_status_changed", handleStoreStatusChanged);
 
     return () => {
       socket.off("notification:new", handleNewNotification);
       socket.off("notification:unread_count", handleUnreadCount);
       socket.off("new_order", handleNewOrder);
+      socket.off("session:revoked", handleSessionRevoked);
+      socket.off("manager:permissions_updated", handleManagerPermissionsUpdated);
+      socket.off("branch_status_changed", handleBranchStatusChanged);
+      socket.off("store_status_changed", handleStoreStatusChanged);
     };
-  }, [refetchNotifs, refetchUnreadCount, navigate]);
+  }, [dispatch, navigate, refetchNotifs, refetchUnreadCount, isStoreOwner, user]);
 
   // Click outside to close notification panel & profile dropdown
   useEffect(() => {
@@ -553,7 +623,9 @@ export default function AdminLayout() {
             <div className="sidebar-brand-text">
               <span className="brand-title">SFC Bakers</span>
               <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                <span className="brand-badge">ADMIN PANEL</span>
+                <span className="brand-badge">
+                  {isStoreOwner ? "STORE OWNER" : "ADMIN PANEL"}
+                </span>
               </div>
             </div>
           </div>
@@ -646,21 +718,71 @@ export default function AdminLayout() {
           })}
         </nav>
 
-        <div className="sidebar-footer">
-          <div className="sidebar-help">
-            <p>Need help?</p>
-            <span>Reach your support team</span>
-            <button
-              type="button"
-              onClick={() => {
-                setOpen(false);
-                navigate("/messages");
+        {/* STORE OWNER DEVELOPER INQUIRY CARD */}
+        {isStoreOwner && devSettings?.is_enabled && devSettings?.show_in_store_dashboard && (
+          <div
+            style={{
+              margin: "16px 12px",
+              padding: "13px",
+              background: "linear-gradient(135deg, rgba(37, 99, 235, 0.12) 0%, rgba(30, 64, 175, 0.22) 100%)",
+              border: "1px solid rgba(59, 130, 246, 0.35)",
+              borderRadius: "14px",
+              color: "#ffffff",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "6px" }}>
+              <div
+                style={{
+                  width: "28px",
+                  height: "28px",
+                  borderRadius: "8px",
+                  background: "#2563eb",
+                  color: "#ffffff",
+                  display: "grid",
+                  placeItems: "center",
+                  flexShrink: 0,
+                }}
+              >
+                <Code size={15} />
+              </div>
+              <div>
+                <div style={{ fontSize: "10px", fontWeight: 800, color: "#93c5fd", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                  Developer Support
+                </div>
+                <div style={{ fontSize: "12.5px", fontWeight: 800, color: "#ffffff" }}>
+                  {devSettings.developer_name || "Pawan Kumawat"}
+                </div>
+              </div>
+            </div>
+            <p style={{ margin: "6px 0 10px 0", fontSize: "11px", color: "rgba(255,255,255,0.8)", lineHeight: "1.4" }}>
+              Want a custom website, billing app, or software for your other business?
+            </p>
+            <a
+              href={`https://wa.me/${(devSettings.developer_whatsapp || "917690939596").replace(/\D/g, "")}?text=${encodeURIComponent(
+                `Hi Pawan, I am a store partner at SFC Bakers and want to discuss custom software/website development for my business.`
+              )}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: "6px",
+                padding: "7px 10px",
+                background: "#22c55e",
+                color: "#ffffff",
+                borderRadius: "8px",
+                fontSize: "11px",
+                fontWeight: 700,
+                textDecoration: "none",
+                boxShadow: "0 2px 4px rgba(34, 197, 94, 0.3)",
               }}
             >
-              Contact support
-            </button>
+              <WhatsAppIcon size={14} />
+              <span>WhatsApp Developer</span>
+            </a>
           </div>
-        </div>
+        )}
       </aside>
 
       <div className="main-area">
@@ -675,89 +797,205 @@ export default function AdminLayout() {
             <Menu size={20} />
           </button>
           <div className="topbar-title-wrap">
-            <p className="eyebrow">ADMINISTRATION</p>
+            <p className="eyebrow">{isStoreOwner ? (myStore?.name || "STORE OWNER") : "ADMINISTRATION"}</p>
             <h2>{title}</h2>
           </div>
           <div className="top-actions">
-            <SearchInput placeholder="Search anything..." className="topbar-search" />
-
             {/* Quick Shop Status Toggle in Topbar */}
-            <div
-              className="topbar-shop-status"
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "8px",
-                padding: "4px 10px 4px 12px",
-                borderRadius: "10px",
-                background: isShopOpen ? "#f0fdf4" : "#fef2f2",
-                border: isShopOpen ? "1px solid #bbf7d0" : "1px solid #fecaca",
-                transition: "all 0.2s ease",
-              }}
-            >
-              <span
+            {isStoreOwner && myStore ? (
+              <div
+                className="topbar-shop-status"
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "8px",
+                  padding: "4px 10px 4px 12px",
+                  borderRadius: "10px",
+                  background: myStore.is_open ? "#f0fdf4" : "#fef2f2",
+                  border: myStore.is_open ? "1px solid #bbf7d0" : "1px solid #fecaca",
+                  transition: "all 0.2s ease",
+                }}
+              >
+                <span
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "6px",
+                    fontSize: "12px",
+                    fontWeight: 700,
+                    color: myStore.is_open ? "#15803d" : "#b91c1c",
+                    whiteSpace: "nowrap",
+                    userSelect: "none",
+                  }}
+                >
+                  <span
+                    style={{
+                      width: "7px",
+                      height: "7px",
+                      borderRadius: "50%",
+                      background: myStore.is_open ? "#22c55e" : "#ef4444",
+                      boxShadow: myStore.is_open
+                        ? "0 0 0 2px rgba(34,197,94,0.3)"
+                        : "0 0 0 2px rgba(239,68,68,0.3)",
+                    }}
+                  />
+                  <span className="shop-status-label">{myStore.is_open ? "Branch Open" : "Branch Closed"}</span>
+                </span>
+
+                {/* Toggle Switch */}
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={myStore.is_open}
+                  onClick={handleToggleMyStore}
+                  disabled={isTogglingStore}
+                  title={myStore.is_open ? "Click to set Store Closed" : "Click to set Store Open"}
+                  style={{
+                    position: "relative",
+                    width: "38px",
+                    height: "20px",
+                    borderRadius: "9999px",
+                    background: myStore.is_open ? "#16a34a" : "#dc2626",
+                    border: "none",
+                    cursor: "pointer",
+                    padding: "2px",
+                    display: "flex",
+                    alignItems: "center",
+                    transition: "background-color 0.2s ease",
+                    outline: "none",
+                    flexShrink: 0,
+                  }}
+                >
+                  <span
+                    style={{
+                      width: "16px",
+                      height: "16px",
+                      borderRadius: "50%",
+                      background: "#ffffff",
+                      boxShadow: "0 1px 3px rgba(0,0,0,0.3)",
+                      transform: myStore.is_open ? "translateX(18px)" : "translateX(0px)",
+                      transition: "transform 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
+                      display: "block",
+                    }}
+                  />
+                </button>
+              </div>
+            ) : !isStoreOwner ? (
+              <div
+                className="topbar-shop-status"
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "8px",
+                  padding: "4px 10px 4px 12px",
+                  borderRadius: "10px",
+                  background: isShopOpen ? "#f0fdf4" : "#fef2f2",
+                  border: isShopOpen ? "1px solid #bbf7d0" : "1px solid #fecaca",
+                  transition: "all 0.2s ease",
+                }}
+              >
+                <span
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "6px",
+                    fontSize: "12px",
+                    fontWeight: 700,
+                    color: isShopOpen ? "#15803d" : "#b91c1c",
+                    whiteSpace: "nowrap",
+                    userSelect: "none",
+                  }}
+                >
+                  <span
+                    style={{
+                      width: "7px",
+                      height: "7px",
+                      borderRadius: "50%",
+                      background: isShopOpen ? "#22c55e" : "#ef4444",
+                      boxShadow: isShopOpen
+                        ? "0 0 0 2px rgba(34,197,94,0.3)"
+                        : "0 0 0 2px rgba(239,68,68,0.3)",
+                    }}
+                  />
+                  <span className="shop-status-label">{isShopOpen ? "Shop Open" : "Shop Closed"}</span>
+                </span>
+
+                {/* Toggle Switch */}
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={isShopOpen}
+                  onClick={toggleShopStatus}
+                  title={isShopOpen ? "Click to set Shop Closed" : "Click to set Shop Open"}
+                  style={{
+                    position: "relative",
+                    width: "38px",
+                    height: "20px",
+                    borderRadius: "9999px",
+                    background: isShopOpen ? "#16a34a" : "#dc2626",
+                    border: "none",
+                    cursor: "pointer",
+                    padding: "2px",
+                    display: "flex",
+                    alignItems: "center",
+                    transition: "background-color 0.2s ease",
+                    outline: "none",
+                    flexShrink: 0,
+                  }}
+                >
+                  <span
+                    style={{
+                      width: "16px",
+                      height: "16px",
+                      borderRadius: "50%",
+                      background: "#ffffff",
+                      boxShadow: "0 1px 3px rgba(0,0,0,0.3)",
+                      transform: isShopOpen ? "translateX(18px)" : "translateX(0px)",
+                      transition: "transform 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
+                      display: "block",
+                    }}
+                  />
+                </button>
+              </div>
+            ) : null}
+
+            {/* WhatsApp Order Alerts Status Button (Admin only) */}
+            {isAdmin && (
+              <button
+                type="button"
+                className="topbar-whatsapp-btn"
+                onClick={() => setWhatsappModalOpen(true)}
+                title={isWhatsAppConnected ? "WhatsApp Alerts Connected & Active" : "Link WhatsApp for Instant Order Alerts"}
                 style={{
                   display: "inline-flex",
                   alignItems: "center",
                   gap: "6px",
+                  borderRadius: "10px",
+                  border: isWhatsAppConnected ? "1px solid #bbf7d0" : "1px solid #fef08a",
+                  background: isWhatsAppConnected ? "#f0fdf4" : "#fffbeb",
+                  color: isWhatsAppConnected ? "#15803d" : "#b45309",
                   fontSize: "12px",
-                  fontWeight: 700,
-                  color: isShopOpen ? "#15803d" : "#b91c1c",
-                  whiteSpace: "nowrap",
-                  userSelect: "none",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  transition: "all 0.15s ease",
+                  outline: "none",
                 }}
               >
+                <WhatsAppIcon size={16} />
+                <span className="d-none d-sm-inline">
+                  {isWhatsAppConnected ? "WhatsApp Alerts" : "Link WhatsApp"}
+                </span>
                 <span
                   style={{
                     width: "7px",
                     height: "7px",
                     borderRadius: "50%",
-                    background: isShopOpen ? "#22c55e" : "#ef4444",
-                    boxShadow: isShopOpen
-                      ? "0 0 0 2px rgba(34,197,94,0.3)"
-                      : "0 0 0 2px rgba(239,68,68,0.3)",
-                  }}
-                />
-                <span className="shop-status-label">{isShopOpen ? "Shop Open" : "Shop Closed"}</span>
-              </span>
-
-              {/* Toggle Switch */}
-              <button
-                type="button"
-                role="switch"
-                aria-checked={isShopOpen}
-                onClick={toggleShopStatus}
-                title={isShopOpen ? "Click to set Shop Closed" : "Click to set Shop Open"}
-                style={{
-                  position: "relative",
-                  width: "38px",
-                  height: "20px",
-                  borderRadius: "9999px",
-                  background: isShopOpen ? "#16a34a" : "#dc2626",
-                  border: "none",
-                  cursor: "pointer",
-                  padding: "2px",
-                  display: "flex",
-                  alignItems: "center",
-                  transition: "background-color 0.2s ease",
-                  outline: "none",
-                  flexShrink: 0,
-                }}
-              >
-                <span
-                  style={{
-                    width: "16px",
-                    height: "16px",
-                    borderRadius: "50%",
-                    background: "#ffffff",
-                    boxShadow: "0 1px 3px rgba(0,0,0,0.3)",
-                    transform: isShopOpen ? "translateX(18px)" : "translateX(0px)",
-                    transition: "transform 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
-                    display: "block",
+                    background: isWhatsAppConnected ? "#22c55e" : "#eab308",
+                    display: "inline-block",
                   }}
                 />
               </button>
-            </div>
+            )}
 
             {/* Notification Bell with Badge & Dropdown */}
             <div style={{ position: "relative" }} ref={notifRef}>
@@ -1016,7 +1254,7 @@ export default function AdminLayout() {
                   <small>{user?.role}</small>
             
                 </div> */}
-                <ChevronDown size={16} />
+                <ChevronDown size={16} className="profile-chevron" />
               </div>
 
               {profileOpen && (
@@ -1061,6 +1299,13 @@ export default function AdminLayout() {
           onClose={() => setShowSignOut(false)}
           isLoading={isSigningOut}
           error={signOutError}
+        />
+      )}
+
+      {whatsappModalOpen && (
+        <WhatsAppModal
+          isOpen={whatsappModalOpen}
+          onClose={() => setWhatsappModalOpen(false)}
         />
       )}
     </div>

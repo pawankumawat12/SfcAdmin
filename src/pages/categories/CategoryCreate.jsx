@@ -19,14 +19,8 @@ export default function CategoryCreate() {
       await createCategory(data).unwrap();
       toast.success("Category created successfully!");
       navigate("/categories");
-    } catch (err) {
-      if (err?.status !== 401) {
-        const errorMsg =
-          err?.data?.message ||
-          (err?.data?.errors && Object.values(err.data.errors)[0]) ||
-          "Failed to create category.";
-        toast.error(errorMsg);
-      }
+    } catch {
+      // The API error is shown inline below
     }
   };
 

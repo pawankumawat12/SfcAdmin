@@ -211,7 +211,10 @@ export default function SupplierList() {
           <Pagination
             page={pagination.page}
             totalPages={pagination.totalPages}
+            total={pagination.total}
+            limit={pagination.limit}
             onPageChange={setPage}
+            itemLabel="suppliers"
           />
         )}
       </div>

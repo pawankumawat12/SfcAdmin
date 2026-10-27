@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from "react";
-import DataTable from "../../components/common/DataTable";
 import { useForm } from "react-hook-form";
 import Button from "../../components/ui/Button";
 import {
@@ -19,6 +18,7 @@ import {
   useUpdatePaymentSettingsMutation,
 } from "../../services/settingsApi";
 import toast from "react-hot-toast";
+import StoreLocationPicker from "./StoreLocationPicker";
 import {
   Palette,
   Sun,
@@ -32,6 +32,7 @@ import {
   Phone,
   Mail,
   MapPin,
+  Navigation,
   Clock,
   Percent,
   Truck,
@@ -43,8 +44,6 @@ import {
   Receipt,
   Server,
   ShieldCheck,
-  Eye,
-  EyeOff,
   Send,
   Key,
   Lock,
@@ -53,6 +52,7 @@ import {
   X,
   Store,
   Power,
+  Code,
 } from "lucide-react";
 import { FaFacebook, FaTwitter, FaInstagram } from "react-icons/fa";
 import { toAssetUrl } from "../../utils/assetUrl";
@@ -175,7 +175,7 @@ export default function Settings() {
   const [statusMessage, setStatusMessage] = useState({ text: "", type: "" });
   const [pricingStatus, setPricingStatus] = useState({ text: "", type: "" });
 
-  const { register, handleSubmit, reset } = useForm({
+  const { register, handleSubmit, reset, setValue, watch } = useForm({
     defaultValues: {
       gst_percent: "",
       tax_inclusive: false,
@@ -190,8 +190,21 @@ export default function Settings() {
       store_latitude: "",
       store_longitude: "",
       discount_percent: "",
+      store_commission_type: "percent",
+      store_commission_value: "",
+      store_commission_min_order_amount: "",
+      developer_commission_type: "percent",
+      developer_commission_value: "",
     },
   });
+
+  const storeLat = watch("store_latitude");
+  const storeLng = watch("store_longitude");
+
+  const handleLocationPicked = (lat, lng) => {
+    setValue("store_latitude", lat, { shouldDirty: true });
+    setValue("store_longitude", lng, { shouldDirty: true });
+  };
 
   const availableColorThemes =
     themeResponse?.data?.availableColorThemes &&
@@ -216,6 +229,11 @@ export default function Settings() {
         store_latitude: priceSetting.data.store_latitude ?? "",
         store_longitude: priceSetting.data.store_longitude ?? "",
         discount_percent: priceSetting.data.discount_percent ?? "",
+        store_commission_type: priceSetting.data.store_commission_type ?? "percent",
+        store_commission_value: priceSetting.data.store_commission_value ?? "",
+        store_commission_min_order_amount: priceSetting.data.store_commission_min_order_amount ?? "",
+        developer_commission_type: priceSetting.data.developer_commission_type ?? "percent",
+        developer_commission_value: priceSetting.data.developer_commission_value ?? "",
       });
     }
   }, [priceSetting, reset]);
@@ -235,7 +253,9 @@ export default function Settings() {
 
         packaging_fee: Number(data.packaging_fee),
         cod_fee: Number(data.cod_fee),
-        platform_fee: Number(data.platform_fee),
+        platform_fee: Array.isArray(data.platform_fee)
+          ? Number(data.platform_fee[data.platform_fee.length - 1]) || 0
+          : Number(data.platform_fee) || 0,
 
         minimum_order_amount: Number(data.minimum_order_amount),
 
@@ -243,6 +263,13 @@ export default function Settings() {
         store_longitude: Number(data.store_longitude),
 
         discount_percent: Number(data.discount_percent),
+
+        store_commission_type: data.store_commission_type || "percent",
+        store_commission_value: Number(data.store_commission_value) || 0,
+        store_commission_min_order_amount: Number(data.store_commission_min_order_amount) || 0,
+
+        developer_commission_type: data.developer_commission_type || "percent",
+        developer_commission_value: Number(data.developer_commission_value) || 0,
       };
 
       const response = await updateOrderPricingSettings(payload).unwrap();
@@ -641,6 +668,59 @@ export default function Settings() {
     }
   };
 
+  /* ─── DEVELOPER BRANDING & INQUIRY SETTINGS STATE ─── */
+  const { data: devResponse, isLoading: devLoading } = useGetDeveloperSettingsQuery();
+  const [updateDeveloperSettings, { isLoading: devSaving }] = useUpdateDeveloperSettingsMutation();
+
+  const [devForm, setDevForm] = useState({
+    is_enabled: true,
+    developer_name: "Pawan Kumawat",
+    developer_email: "pawankumawat9009@gmail.com",
+    developer_phone: "7690939596",
+    developer_whatsapp: "917690939596",
+    developer_tagline: "Custom Food Ordering Websites, Cafe Apps & Enterprise Software",
+    custom_inquiry_message: "Hi Pawan, I saw the SFC Bakers website and want to build a similar website/app for my business.",
+    show_in_frontend: true,
+    show_in_store_dashboard: true,
+  });
+  const [devStatus, setDevStatus] = useState({ text: "", type: "" });
+
+  useEffect(() => {
+    if (devResponse?.data) {
+      setDevForm({
+        is_enabled: devResponse.data.is_enabled !== false,
+        developer_name: devResponse.data.developer_name || "Pawan Kumawat",
+        developer_email: devResponse.data.developer_email || "pawankumawat9009@gmail.com",
+        developer_phone: devResponse.data.developer_phone || "7690939596",
+        developer_whatsapp: devResponse.data.developer_whatsapp || "917690939596",
+        developer_tagline: devResponse.data.developer_tagline || "Custom Food Ordering Websites, Cafe Apps & Enterprise Software",
+        custom_inquiry_message: devResponse.data.custom_inquiry_message || "Hi Pawan, I saw the SFC Bakers website and want to build a similar website/app for my business.",
+        show_in_frontend: devResponse.data.show_in_frontend !== false,
+        show_in_store_dashboard: devResponse.data.show_in_store_dashboard !== false,
+      });
+    }
+  }, [devResponse]);
+
+  const handleDevChange = (field) => (e) => {
+    const val = e.target.type === "checkbox" ? e.target.checked : e.target.value;
+    setDevForm((prev) => ({ ...prev, [field]: val }));
+  };
+
+  const handleSaveDeveloper = async (e) => {
+    if (e) e.preventDefault();
+    try {
+      setDevStatus({ text: "", type: "" });
+      await updateDeveloperSettings(devForm).unwrap();
+      setDevStatus({ text: "Developer settings saved successfully!", type: "success" });
+      toast.success("Developer settings updated successfully!");
+      setTimeout(() => setDevStatus({ text: "", type: "" }), 4000);
+    } catch (err) {
+      console.error(err);
+      setDevStatus({ text: err?.data?.message || "Failed to update developer settings", type: "error" });
+      toast.error(err?.data?.message || "Failed to update developer settings");
+    }
+  };
+
   /* ─── Footer form field config ─── */
   const footerFields = [
     {
@@ -726,12 +806,6 @@ export default function Settings() {
       type: "number",
     },
     {
-      key: "platform_fee",
-      label: "Platform Fee",
-      icon: CreditCard,
-      type: "number",
-    },
-    {
       key: "minimum_order_amount",
       label: "Minimum Order Amount",
       icon: ShoppingCartIcon,
@@ -779,7 +853,7 @@ export default function Settings() {
               }}
             >
               <Store size={22} />
-            </div>
+            </div>  
             <div>
               <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
                 <h2
@@ -1084,6 +1158,219 @@ export default function Settings() {
               <>
                 <Check size={16} />
                 Save Footer Settings
+              </>
+            )}
+          </Button>
+        </div>
+      </section>
+
+      {/* ─── DEVELOPER BRANDING & INQUIRY SETTINGS CARD ─── */}
+      <section style={cardStyle}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            borderBottom: "1px solid #f0f0f5",
+            paddingBottom: "16px",
+            marginBottom: "22px",
+            flexWrap: "wrap",
+            gap: "12px",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+            <div
+              style={{
+                width: "40px",
+                height: "40px",
+                borderRadius: "10px",
+                backgroundColor: "#eff6ff",
+                color: "#2563eb",
+                display: "grid",
+                placeItems: "center",
+              }}
+            >
+              <Code size={22} />
+            </div>
+            <div>
+              <h2
+                style={{
+                  margin: 0,
+                  fontSize: "17px",
+                  fontWeight: 700,
+                  color: "#24243b",
+                }}
+              >
+                Developer Branding & Client Lead Settings
+              </h2>
+              <p style={{ margin: 0, fontSize: "12px", color: "#8b8ba0" }}>
+                Control developer attribution, WhatsApp inquiries, and portfolio lead generation across Frontend & Store Dashboard.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <StatusBanner text={devStatus.text} type={devStatus.type} />
+
+        {/* DEVELOPER DETAILS GRID */}
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
+            gap: "16px",
+            marginBottom: "20px",
+          }}
+        >
+          {/* Developer Name */}
+          <div>
+            <label style={sectionLabel}>Developer Name</label>
+            <input
+              type="text"
+              style={inputStyle}
+              placeholder="e.g. Pawan Kumawat"
+              value={devForm.developer_name}
+              onChange={handleDevChange("developer_name")}
+            />
+          </div>
+
+          {/* Developer Email */}
+          <div>
+            <label style={sectionLabel}>Developer Email</label>
+            <input
+              type="email"
+              style={inputStyle}
+              placeholder="e.g. pawankumawat9009@gmail.com"
+              value={devForm.developer_email}
+              onChange={handleDevChange("developer_email")}
+            />
+          </div>
+
+          {/* Phone Number */}
+          <div>
+            <label style={sectionLabel}>Phone Number</label>
+            <input
+              type="text"
+              style={inputStyle}
+              placeholder="e.g. 7690939596"
+              value={devForm.developer_phone}
+              onChange={handleDevChange("developer_phone")}
+            />
+          </div>
+
+          {/* WhatsApp Number */}
+          <div>
+            <label style={sectionLabel}>WhatsApp Number (With Country Code)</label>
+            <input
+              type="text"
+              style={inputStyle}
+              placeholder="e.g. 917690939596"
+              value={devForm.developer_whatsapp}
+              onChange={handleDevChange("developer_whatsapp")}
+            />
+          </div>
+        </div>
+
+        {/* Tagline & Inquiry Message */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: "16px", marginBottom: "20px" }}>
+          <div>
+            <label style={sectionLabel}>Services Tagline (Shown in Footer)</label>
+            <input
+              type="text"
+              style={inputStyle}
+              placeholder="e.g. Custom Food Ordering Websites, Cafe Apps & Enterprise Software"
+              value={devForm.developer_tagline}
+              onChange={handleDevChange("developer_tagline")}
+            />
+          </div>
+
+          <div>
+            <label style={sectionLabel}>Pre-Filled WhatsApp Message</label>
+            <input
+              type="text"
+              style={inputStyle}
+              placeholder="e.g. Hi Pawan, I saw the SFC Bakers website and want to build a similar website for my business."
+              value={devForm.custom_inquiry_message}
+              onChange={handleDevChange("custom_inquiry_message")}
+            />
+            <span style={{ fontSize: "11px", color: "#8b8ba0", marginTop: "4px", display: "block" }}>
+              When a visitor or store owner clicks "Build Your Website" or "WhatsApp Developer", this message opens automatically.
+            </span>
+          </div>
+        </div>
+
+        {/* DISPLAY TOGGLE SWITCHES */}
+        <div
+          style={{
+            background: "#f8fafc",
+            border: "1px solid #e2e8f0",
+            borderRadius: "12px",
+            padding: "16px",
+            marginBottom: "24px",
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+            gap: "14px",
+          }}
+        >
+          <label style={{ display: "flex", alignItems: "center", gap: "10px", cursor: "pointer", userSelect: "none" }}>
+            <input
+              type="checkbox"
+              checked={devForm.show_in_frontend}
+              onChange={handleDevChange("show_in_frontend")}
+              style={{ width: "16px", height: "16px", accentColor: "#2563eb", cursor: "pointer" }}
+            />
+            <span style={{ fontSize: "13px", fontWeight: 600, color: "#1e293b" }}>
+              Show on Customer Frontend Footer
+            </span>
+          </label>
+
+          <label style={{ display: "flex", alignItems: "center", gap: "10px", cursor: "pointer", userSelect: "none" }}>
+            <input
+              type="checkbox"
+              checked={devForm.show_in_store_dashboard}
+              onChange={handleDevChange("show_in_store_dashboard")}
+              style={{ width: "16px", height: "16px", accentColor: "#2563eb", cursor: "pointer" }}
+            />
+            <span style={{ fontSize: "13px", fontWeight: 600, color: "#1e293b" }}>
+              Show on Store Owner Sidebar
+            </span>
+          </label>
+
+          <label style={{ display: "flex", alignItems: "center", gap: "10px", cursor: "pointer", userSelect: "none" }}>
+            <input
+              type="checkbox"
+              checked={devForm.is_enabled}
+              onChange={handleDevChange("is_enabled")}
+              style={{ width: "16px", height: "16px", accentColor: "#2563eb", cursor: "pointer" }}
+            />
+            <span style={{ fontSize: "13px", fontWeight: 600, color: "#1e293b" }}>
+              Enable Developer Branding Globally
+            </span>
+          </label>
+        </div>
+
+        {/* SAVE BUTTON */}
+        <div style={{ display: "flex", justifyContent: "flex-end" }}>
+          <Button
+            type="button"
+            onClick={handleSaveDeveloper}
+            disabled={devSaving || devLoading}
+            style={{
+              minWidth: "180px",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: "8px",
+            }}
+          >
+            {devSaving ? (
+              <>
+                <RefreshCw size={16} className="animate-spin" />
+                Saving...
+              </>
+            ) : (
+              <>
+                <Check size={16} />
+                Save Developer Settings
               </>
             )}
           </Button>
@@ -1727,7 +2014,7 @@ export default function Settings() {
                 justifyContent: "flex-end",
                 gap: "10px",
               }}
-            >
+            > 
               <button
                 type="button"
                 onClick={() => {
@@ -2153,11 +2440,170 @@ export default function Settings() {
             </div>
           </div>
 
-          {/* Cafe Location */}
+          {/* Store Branch Commission Settings */}
           <div className="border-top pt-4 mb-4">
-            <h3 className="fs-6 fw-bold text-dark mb-3">Bakery Location</h3>
+            <div className="mb-3">
+              <h3 className="fs-6 fw-bold text-dark mb-1 d-flex align-items-center gap-2">
+                <Banknote size={16} className="text-primary" />
+                Store Branch Commission Settings
+              </h3>
+              <p className="text-muted small mb-0">
+                Configure commission deducted from store branch payouts per order. Store owners receive Product Price, Delivery Fee, and Packaging Fee minus this Admin Commission.
+              </p>
+            </div>
 
             <div className="row g-4">
+              <div className="col-12 col-md-4">
+                <label className="form-label fw-semibold small text-dark d-flex align-items-center gap-2">
+                  <Sliders size={14} />
+                  Commission Type
+                </label>
+                <select
+                  className="form-select"
+                  {...register("store_commission_type")}
+                >
+                  <option value="percent">Percentage (%)</option>
+                  <option value="fixed">Fixed Flat (₹)</option>
+                </select>
+                <div className="form-text small text-muted">
+                  Calculate as % of subtotal or flat fee per order.
+                </div>
+              </div>
+
+              <div className="col-12 col-md-4">
+                <label className="form-label fw-semibold small text-dark d-flex align-items-center gap-2">
+                  <Percent size={14} />
+                  Commission Value ({watch("store_commission_type") === "fixed" ? "₹" : "%"})
+                </label>
+                <input
+                  type="number"
+                  step="any"
+                  min="0"
+                  placeholder={watch("store_commission_type") === "fixed" ? "e.g. 50" : "e.g. 10"}
+                  className="form-control"
+                  {...register("store_commission_value")}
+                />
+                <div className="form-text small text-muted">
+                  Rate to deduct from the order settlement.
+                </div>
+              </div>
+
+              <div className="col-12 col-md-4">
+                <label className="form-label fw-semibold small text-dark d-flex align-items-center gap-2">
+                  <ShoppingCart size={14} />
+                  Min Order Amount for Commission (₹)
+                </label>
+                <input
+                  type="number"
+                  step="any"
+                  min="0"
+                  placeholder="e.g. 0 (all orders) or 200"
+                  className="form-control"
+                  {...register("store_commission_min_order_amount")}
+                />
+                <div className="form-text small text-muted">
+                  Commission applies only if order subtotal is at or above this.
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Developer Tech Royalty & Maintenance Share (Confidential - Admin Only) */}
+          <div className="border-top pt-4 mb-4">
+            <div className="mb-2">
+              <div className="d-flex align-items-center justify-content-between flex-wrap gap-2">
+                <h3 className="fs-6 fw-bold text-dark mb-1 d-flex align-items-center gap-2">
+                  <Code size={16} className="text-primary" />
+                  Developer Tech Royalty & Maintenance Share (Admin Only)
+                </h3>
+                <span className="badge bg-primary-subtle text-primary border border-primary-subtle fw-semibold">
+                  Zero-Upfront Tech Model
+                </span>
+              </div>
+             
+            </div>
+
+            <div className="row g-4">
+              <div className="col-12 col-md-4">
+                <label className="form-label fw-semibold small text-dark d-flex align-items-center gap-2">
+                  <CreditCard size={14} className="text-success" />
+                  Customer Platform Fee (100% Developer)
+                </label>
+                <div className="input-group">
+                  <span className="input-group-text bg-light text-muted">₹</span>
+                  <input
+                    type="number"
+                    step="any"
+                    min="0"
+                    placeholder="e.g. 5"
+                    className="form-control"
+                    {...register("platform_fee")}
+                  />
+                </div>
+                <div className="form-text small text-muted">
+                  Customer pays this on checkout. 100% routes to developer tech fee.
+                </div>
+              </div>
+
+              <div className="col-12 col-md-4">
+                <label className="form-label fw-semibold small text-dark d-flex align-items-center gap-2">
+                  <Sliders size={14} />
+                  Developer Share from Store Commission
+                </label>
+                <select
+                  className="form-select"
+                  {...register("developer_commission_type")}
+                >
+                  <option value="percent">Percentage (% of Branch Store Commission)</option>
+                  <option value="fixed">Fixed Flat (₹ per branch order)</option>
+                </select>
+                <div className="form-text small text-muted">
+                  How developer cut is calculated from branch store commission.
+                </div>
+              </div>
+
+              <div className="col-12 col-md-4">
+                <label className="form-label fw-semibold small text-dark d-flex align-items-center gap-2">
+                  <Percent size={14} />
+                  Developer Commission Value ({watch("developer_commission_type") === "fixed" ? "₹" : "%"})
+                </label>
+                <input
+                  type="number"
+                  step="any"
+                  min="0"
+                  placeholder={watch("developer_commission_type") === "fixed" ? "e.g. 5" : "e.g. 25"}
+                  className="form-control"
+                  {...register("developer_commission_value")}
+                />
+                <div className="form-text small text-muted">
+                  {watch("developer_commission_type") === "fixed"
+                    ? "Fixed ₹ deducted from collected store commission per branch order."
+                    : "% cut from collected store commission (e.g. 25% of ₹20 = ₹5)."}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Bakery Location */}
+          <div className="border-top pt-4 mb-4">
+            <div className="mb-2">
+              <h3 className="fs-6 fw-bold text-dark mb-1 d-flex align-items-center gap-2">
+                <MapPin size={16} className="text-danger" />
+                Bakery Store Location
+              </h3>
+              <p className="text-muted small mb-0">
+                Drag the red pin or click anywhere on the map to set the exact shop location.
+              </p>
+            </div>
+
+            <StoreLocationPicker
+              latitude={storeLat}
+              longitude={storeLng}
+              deliveryRadiusKm={watch("max_delivery_distance") || 10}
+              onLocationChange={handleLocationPicked}
+            />
+
+            <div className="row g-4 mt-1">
               <div className="col-12 col-md-6">
                 <label className="form-label fw-semibold small text-dark d-flex align-items-center gap-2">
                   <MapPin size={14} />
@@ -2167,7 +2613,7 @@ export default function Settings() {
                 <input
                   type="number"
                   step="any"
-                  className="form-control"
+                  className="form-control font-monospace"
                   placeholder="26.9124"
                   {...register("store_latitude", {
                     valueAsNumber: true,
@@ -2184,7 +2630,7 @@ export default function Settings() {
                 <input
                   type="number"
                   step="any"
-                  className="form-control"
+                  className="form-control font-monospace"
                   placeholder="75.7873"
                   {...register("store_longitude", {
                     valueAsNumber: true,

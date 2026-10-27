@@ -82,8 +82,8 @@ export default function CmsPageList() {
       toast.success(`Page '${pageToDelete.title}' deleted`);
       setPageToDelete(null);
       setSelectedIds((prev) => prev.filter((id) => id !== pageToDelete.id));
-    } catch (err) {
-      toast.error(err?.data?.message || "Failed to delete page");
+    } catch {
+      // The API error is rendered inside the ConfirmDialog via error prop
     }
   };
 

@@ -15,6 +15,9 @@ const authSlice = createSlice({
           payload.user?.token;
         if (token) {
           state.accessToken = token;
+          if (typeof window !== "undefined") {
+            localStorage.setItem("accessToken", token);
+          }
         }
       }
     },

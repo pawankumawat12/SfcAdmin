@@ -13,6 +13,8 @@ const EMPTY_IMAGES = [];
 
 export default function ProductForm({
   categories = [],
+  stores = [],
+  isAdmin = false,
   initialValues,
   existingImages = EMPTY_IMAGES,
   onSubmit,
@@ -155,6 +157,7 @@ export default function ProductForm({
 
     onSubmit({
       ...data,
+      storeId: data.storeId || "",
       availabilityType: data.availability_type,
       stock: data.availability_type === "MADE_TO_ORDER" ? 0 : data.stock,
       imageFiles: data.imageFiles || [],
@@ -165,6 +168,20 @@ export default function ProductForm({
   return (
     <form className="entity-form card" onSubmit={handleSubmit(submit)}>
       <div className="form-grid">
+        {isAdmin && stores.length > 0 && (
+          <label>
+            Assign to Store (Owner)
+            <Select {...register("storeId")}>
+              <option value="">Central Bakery (All Stores / Global)</option>
+              {stores.map((s) => (
+                <option key={s.id} value={String(s.id)}>
+                  {s.name} {s.city ? `(${s.city})` : ""} {s.owner_name ? `— Owner: ${s.owner_name}` : ""}
+                </option>
+              ))}
+            </Select>
+          </label>
+        )}
+
         <label>
           Product name
           <Input {...register("name")} placeholder="e.g. Special Paneer Tikka" />

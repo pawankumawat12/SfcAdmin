@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import {
   UtensilsCrossed,
   Plus,
@@ -12,26 +12,31 @@ import Button from "../../components/ui/Button";
 import SearchInput from "../../components/ui/SearchInput";
 import Select from "../../components/ui/Select";
 import Input from "../../components/ui/Input";
-import { useGetProductsQuery } from "../../services/productApi";
+import Pagination from "../../components/ui/Pagination";
+import { useGetPosProductsQuery } from "../../services/productApi";
 import {
   useGetIngredientsQuery,
   useGetProductRecipeQuery,
   useSaveProductRecipeMutation,
 } from "../../services/inventoryApi";
 import useDebouncedValue from "../../utils/useDebouncedValue";
+import { useThrottledCallback } from "../../utils/throttle";
 
 export default function RecipeList() {
   const [productSearch, setProductSearch] = useState("");
   const debouncedProductSearch = useDebouncedValue(productSearch, 300);
   const [selectedProductId, setSelectedProductId] = useState(null);
 
-  const { data: productsData, isLoading: isLoadingProducts } = useGetProductsQuery({
-    limit: 100,
+  // STRICT REQUIREMENT: Only Admin products (admin_only: true), including POS-created items (include_pos: true)
+  const { data: productsData, isLoading: isLoadingProducts } = useGetPosProductsQuery({
+    limit: 200,
+    admin_only: true,
+    include_pos: true,
     ...(debouncedProductSearch.trim() ? { search: debouncedProductSearch.trim() } : {}),
   });
-  const products = productsData?.data || [];
+  const products = (productsData?.data || []).filter((p) => p.store_id == null);
 
-  const { data: ingredientsData } = useGetIngredientsQuery({ limit: 100 });
+  const { data: ingredientsData } = useGetIngredientsQuery({ limit: 200, admin_only: true });
   const allIngredients = ingredientsData?.data || [];
 
   const {
@@ -66,6 +71,26 @@ export default function RecipeList() {
     }
   }, [recipeData]);
 
+  const [ingredientPage, setIngredientPage] = useState(1);
+  const ingredientLimit = 10;
+
+  useEffect(() => {
+    setIngredientPage(1);
+  }, [selectedProductId]);
+
+  const totalIngredientPages = Math.ceil(recipeItems.length / ingredientLimit) || 1;
+
+  useEffect(() => {
+    if (ingredientPage > totalIngredientPages) {
+      setIngredientPage(totalIngredientPages);
+    }
+  }, [totalIngredientPages, ingredientPage]);
+
+  const paginatedRecipeItems = useMemo(() => {
+    const start = (ingredientPage - 1) * ingredientLimit;
+    return recipeItems.slice(start, start + ingredientLimit);
+  }, [recipeItems, ingredientPage, ingredientLimit]);
+
   const selectedProduct = products.find((p) => p.id === selectedProductId);
 
   const handleAddIngredient = () => {
@@ -73,7 +98,7 @@ export default function RecipeList() {
       (ing) => !recipeItems.some((r) => Number(r.ingredient_id) === Number(ing.id))
     );
     if (!available) {
-      toast.error("All available raw materials are already added to this recipe");
+      toast.error("Please add another raw material to use in this recipe.");
       return;
     }
     setRecipeItems((prev) => [
@@ -84,6 +109,7 @@ export default function RecipeList() {
         unit: available.base_unit,
       },
     ]);
+    setIngredientPage(Math.ceil((recipeItems.length + 1) / ingredientLimit));
   };
 
   const handleRemoveIngredient = (index) => {
@@ -150,6 +176,8 @@ export default function RecipeList() {
     }
   };
 
+  const throttledSaveRecipe = useThrottledCallback(handleSaveRecipe, 2000);
+
   return (
     <>
       <div className="section-head">
@@ -208,9 +236,26 @@ export default function RecipeList() {
                           fontSize: "13px",
                           fontWeight: isSelected ? 600 : 500,
                           color: isSelected ? "var(--purple, #6253e8)" : "var(--ink, #1f2937)",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "6px",
                         }}
                       >
-                        {p.name}
+                        <span>{p.name}</span>
+                        {p.is_pos_only && (
+                          <span
+                            className="badge"
+                            style={{
+                              fontSize: "9.5px",
+                              backgroundColor: "#ede9fe",
+                              color: "#6b21a8",
+                              fontWeight: 600,
+                              padding: "1px 5px",
+                            }}
+                          >
+                            POS
+                          </span>
+                        )}
                       </div>
                       <small style={{ color: "var(--muted, #6d6c80)", fontSize: "11px" }}>
                         {p.category_name || "Food Item"}
@@ -283,90 +328,104 @@ export default function RecipeList() {
                     </p>
                   </div>
                 ) : (
-                  <div className="table-responsive">
-                    <table className="table table-striped table-hover align-middle mb-0">
-                      <thead className="table-light">
-                        <tr>
-                          <th>RAW MATERIAL</th>
-                          <th style={{ width: "160px" }}>QTY PER ORDER</th>
-                          <th>UNIT COST</th>
-                          <th>SUBTOTAL</th>
-                          <th>CANCEL RESTOCK?</th>
-                          <th style={{ width: "60px", textAlign: "center" }}>ACTION</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {recipeItems.map((item, index) => {
-                          const ingObj = allIngredients.find(
-                            (i) => Number(i.id) === Number(item.ingredient_id)
-                          );
-                          const subtotal =
-                            (Number(item.quantity) || 0) * (Number(ingObj?.purchase_price) || 0);
+                  <>
+                    <div className="table-responsive">
+                      <table className="table table-striped table-hover align-middle mb-0" style={{ minWidth: "680px" }}>
+                        <thead className="table-light">
+                          <tr>
+                            <th>RAW MATERIAL</th>
+                            <th style={{ width: "160px" }}>QTY PER ORDER</th>
+                            <th>UNIT COST</th>
+                            <th>SUBTOTAL</th>
+                            <th>CANCEL RESTOCK?</th>
+                            <th style={{ width: "60px", textAlign: "center" }}>ACTION</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {paginatedRecipeItems.map((item, index) => {
+                            const actualIndex = (ingredientPage - 1) * ingredientLimit + index;
+                            const ingObj = allIngredients.find(
+                              (i) => Number(i.id) === Number(item.ingredient_id)
+                            );
+                            const subtotal =
+                              (Number(item.quantity) || 0) * (Number(ingObj?.purchase_price) || 0);
 
-                          return (
-                            <tr key={index}>
-                              <td>
-                                <Select
-                                  value={item.ingredient_id}
-                                  onChange={(e) => handleIngredientChange(index, e.target.value)}
-                                  style={{ width: "100%", height: "36px" }}
-                                >
-                                  {allIngredients.map((ing) => (
-                                    <option key={ing.id} value={ing.id}>
-                                      {ing.name} ({ing.category})
-                                    </option>
-                                  ))}
-                                </Select>
-                              </td>
+                            return (
+                              <tr key={actualIndex}>
+                                <td>
+                                  <Select
+                                    value={item.ingredient_id}
+                                    onChange={(e) => handleIngredientChange(actualIndex, e.target.value)}
+                                    style={{ width: "100%", height: "36px" }}
+                                  >
+                                    {allIngredients.map((ing) => (
+                                      <option key={ing.id} value={ing.id}>
+                                        {ing.name} ({ing.category})
+                                      </option>
+                                    ))}
+                                  </Select>
+                                </td>
 
-                              <td>
-                                <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                                  <Input
-                                    type="number"
-                                    step="any"
-                                    min="0.0001"
-                                    value={item.quantity}
-                                    onChange={(e) => handleQuantityChange(index, e.target.value)}
-                                    placeholder="Qty"
-                                    style={{ height: "36px", width: "90px", fontFamily: "monospace" }}
-                                  />
-                                  <small style={{ color: "var(--muted)", fontWeight: 600 }}>
-                                    {ingObj?.base_unit || "pc"}
-                                  </small>
-                                </div>
-                              </td>
+                                <td>
+                                  <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                                    <Input
+                                      type="number"
+                                      step="any"
+                                      min="0.0001"
+                                      value={item.quantity}
+                                      onChange={(e) => handleQuantityChange(actualIndex, e.target.value)}
+                                      placeholder="Qty"
+                                      style={{ height: "36px", width: "90px", fontFamily: "monospace" }}
+                                    />
+                                    <small style={{ color: "var(--muted)", fontWeight: 600 }}>
+                                      {ingObj?.base_unit || "pc"}
+                                    </small>
+                                  </div>
+                                </td>
 
-                              <td style={{ fontFamily: "monospace", fontSize: "13px" }}>
-                                ₹{Number(ingObj?.purchase_price || 0).toFixed(2)}
-                              </td>
+                                <td style={{ fontFamily: "monospace", fontSize: "13px" }}>
+                                  ₹{Number(ingObj?.purchase_price || 0).toFixed(2)}
+                                </td>
 
-                              <td style={{ fontFamily: "monospace", fontSize: "13px", fontWeight: 600 }}>
-                                ₹{subtotal.toFixed(2)}
-                              </td>
+                                <td style={{ fontFamily: "monospace", fontSize: "13px", fontWeight: 600 }}>
+                                  ₹{subtotal.toFixed(2)}
+                                </td>
 
-                              <td>
-                                {ingObj?.restore_stock_on_cancel ? (
-                                  <em className="active">Restorable</em>
-                                ) : (
-                                  <em className="inactive">Consumed in Prep</em>
-                                )}
-                              </td>
+                                <td>
+                                  {ingObj?.restore_stock_on_cancel ? (
+                                    <em className="active">Restorable</em>
+                                  ) : (
+                                    <em className="inactive">Consumed in Prep</em>
+                                  )}
+                                </td>
 
-                              <td style={{ textAlign: "center" }}>
-                                <Button
-                                  variant="delete"
-                                  onClick={() => handleRemoveIngredient(index)}
-                                  title="Remove Ingredient"
-                                >
-                                  <Trash2 size={15} />
-                                </Button>
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
+                                <td style={{ textAlign: "center" }}>
+                                  <Button
+                                    variant="delete"
+                                    onClick={() => handleRemoveIngredient(actualIndex)}
+                                    title="Remove Ingredient"
+                                  >
+                                    <Trash2 size={15} />
+                                  </Button>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    {/* Pagination for recipe items */}
+                    <Pagination
+                      page={ingredientPage}
+                      totalPages={totalIngredientPages}
+                      total={recipeItems.length}
+                      limit={ingredientLimit}
+                      onPageChange={setIngredientPage}
+                      itemLabel="ingredients"
+                      className="p-3 border-top"
+                    />
+                  </>
                 )}
 
                 <div
@@ -377,7 +436,7 @@ export default function RecipeList() {
                     borderTop: "1px solid var(--line)",
                   }}
                 >
-                  <Button variant="primary" onClick={handleSaveRecipe} loading={isSaving} disabled={isSaving}>
+                  <Button variant="primary" onClick={throttledSaveRecipe} loading={isSaving} disabled={isSaving}>
                     <Save size={16} /> Save Recipe
                   </Button>
                 </div>

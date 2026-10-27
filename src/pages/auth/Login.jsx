@@ -3,7 +3,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { emailSchema, otpSchema } from "../../schema/auth.schema";
 import { useDispatch } from "react-redux";
 import { setUser } from "../../context/authSlice";
-import { ArrowLeft, LockKeyhole, Eye, EyeOff } from "lucide-react";
+import { ArrowLeft, LockKeyhole } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
@@ -15,6 +15,7 @@ import {
 } from "../../services/authApi";
 import Button from "../../components/ui/Button";
 import Input from "../../components/ui/Input";
+import { getFirstAllowedRouteForManager } from "../../utils/managerPermissions";
 
 export default function Login() {
   const RESEND_COOLDOWN_SECONDS = 30;
@@ -28,8 +29,8 @@ export default function Login() {
   const [sendOtp, { isLoading: resendingOtp }] = useSendOtpMutation();
   const [verifyOtp, { isLoading: verifyingOtp }] = useVerifyOtpMutation();
   const [getMe] = useLazyGetMeQuery();
+
   const [apiError, setApiError] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
   const [otpDigits, setOtpDigits] = useState(["", "", "", "", "", ""]);
   const [resendCount, setResendCount] = useState(0);
   const [resendTimer, setResendTimer] = useState(0);
@@ -70,7 +71,11 @@ export default function Login() {
           dispatch(setUser({ ...res.user, accessToken: token }));
         }
         toast.success(res?.message || "Welcome back! Logged in successfully.");
-        navigate("/", { replace: true });
+        const targetRoute =
+          res?.user?.role === "manager"
+            ? getFirstAllowedRouteForManager(res?.user?.permissions)
+            : "/";
+        navigate(targetRoute, { replace: true });
         return;
       }
 
@@ -83,7 +88,6 @@ export default function Login() {
       const errorMsg =
         error?.data?.message || "Unable to sign in. Please try again.";
       setApiError(errorMsg);
-      toast.error(errorMsg);
     }
   };
 
@@ -99,11 +103,14 @@ export default function Login() {
       }
 
       toast.success("Welcome back! Logged in successfully.");
-      navigate("/", { replace: true });
+      const targetRoute =
+        res?.user?.role === "manager"
+          ? getFirstAllowedRouteForManager(res?.user?.permissions)
+          : "/";
+      navigate(targetRoute, { replace: true });
     } catch (error) {
       const errorMsg = error?.data?.message || "Invalid or expired OTP.";
       setApiError(errorMsg);
-      toast.error(errorMsg);
     }
   };
 
@@ -177,23 +184,14 @@ export default function Login() {
             <div>
               <label htmlFor="password">Password</label>
 
-              <div className="password-wrapper">
-                <Input
-                  id="password"
-                  type={showPassword ? "text" : "password"}
-                  autoComplete="current-password"
-                  placeholder="System@123"
-                  {...emailForm.register("password")}
-                />
-
-                <Button
-                  variant="plain"
-                  className="password-toggle"
-                  onClick={() => setShowPassword((prev) => !prev)}
-                >
-                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-                </Button>
-              </div>
+              <Input
+                id="password"
+                type="password"
+                autoComplete="current-password"
+                placeholder="System@123"
+                {...emailForm.register("password")}
+                style={{width: "100%"}}
+              />
 
               {emailForm.formState.errors.password && (
                 <small className="error">
@@ -221,7 +219,7 @@ export default function Login() {
             >
               Forgot password?
             </Link>
-          </form>
+          </form> 
         ) : (
           <form
             onSubmit={otpForm.handleSubmit(handleSignIn)}
@@ -284,7 +282,6 @@ export default function Login() {
                   if (error?.data?.retryAfter) setResendTimer(error.data.retryAfter);
                   const errorMsg = error?.data?.message || "Unable to resend OTP.";
                   setApiError(errorMsg);
-                  toast.error(errorMsg);
                 }
               }}
             >

@@ -9,15 +9,19 @@ function App() {
       <Toaster
         position="top-right"
         reverseOrder={false}
+        containerStyle={{
+          zIndex: 999999999,
+        }}
         toastOptions={{
-          duration: 4000,
+          duration: 3000,
           style: {
+            zIndex: 999999999,
             borderRadius: "10px",
             background: "#222232",
             color: "#fff",
             fontSize: "13.5px",
             padding: "10px 14px",
-            boxShadow: "0 10px 30px rgba(0, 0, 0, 0.3)",
+            boxShadow: "0 10px 30px rgba(0, 0, 0, 0.4)",
           },
         }}
       >

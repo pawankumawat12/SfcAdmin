@@ -15,7 +15,9 @@ export default function CmsPageCreate() {
       toast.success("CMS Page created successfully!");
       navigate("/cms-pages");
     } catch (err) {
-      toast.error(err?.data?.message || "Failed to create CMS page");
+      if (!err?.data?.errors || Object.keys(err.data.errors).length === 0) {
+        toast.error(err?.data?.message || "Failed to create CMS page");
+      }
     }
   };
 

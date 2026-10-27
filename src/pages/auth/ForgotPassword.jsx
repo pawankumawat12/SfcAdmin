@@ -258,9 +258,23 @@ export default function ForgotPassword() {
           </>
         )}
 
-        <Link className="text-btn" to="/login" style={{ marginTop: "16px" }}>
-          <ArrowLeft size={16} /> Back to login
-        </Link>
+        <div style={{ textAlign: "center", marginTop: "20px", paddingTop: "16px", borderTop: "1px solid #f3f4f6" }}>
+          <Link
+            to="/login"
+            className="text-btn text-decoration-none"
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "6px",
+              color: "#4f46e5",
+              fontSize: "13.5px",
+              fontWeight: 600,
+              textDecoration: "none",
+            }}
+          >
+            <ArrowLeft size={16} /> Back to Sign In
+          </Link>
+        </div>
       </section>
     </main>
   );

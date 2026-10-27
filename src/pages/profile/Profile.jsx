@@ -12,12 +12,20 @@ import {
   Save,
   LoaderCircle,
   CheckCircle2,
+  KeyRound,
+  Lock,
 } from "lucide-react";
-import { useUpdateProfileMutation } from "../../services/authApi";
+import {
+  useUpdateProfileMutation,
+  useChangePasswordMutation,
+} from "../../services/authApi";
 import { setUser } from "../../context/authSlice";
 import { toAssetUrl } from "../../utils/assetUrl";
+import { isValidIndianPhone, normalizeIndianPhone, sanitizePhoneInput } from "../../utils/phoneValidation";
 import Button from "../../components/ui/Button";
 import ConfirmDialog from "../../components/ui/ConfirmDialog";
+import ChangeEmailModal from "../../modals/ChangeEmailModal";
+import DynamicQrSection from "./DynamicQrSection";
 
 export default function Profile() {
   const user = useSelector((state) => state.auth.user);
@@ -30,11 +38,22 @@ export default function Profile() {
   const [isSavingDetails, setIsSavingDetails] = useState(false);
   const [showRemoveConfirm, setShowRemoveConfirm] = useState(false);
   const [isRemovingPhoto, setIsRemovingPhoto] = useState(false);
+  const [showEmailModal, setShowEmailModal] = useState(false);
 
   // Form states
   const [name, setName] = useState(user?.name || "");
   const [phone, setPhone] = useState(user?.phone || "");
   const [nameError, setNameError] = useState("");
+  const [phoneError, setPhoneError] = useState("");
+
+  // Change password states
+  const [changePassword, { isLoading: isChangingPassword }] =
+    useChangePasswordMutation();
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmNewPassword, setConfirmNewPassword] = useState("");
+  const [passwordError, setPasswordError] = useState("");
+  const [passwordSuccess, setPasswordSuccess] = useState("");
 
   useEffect(() => {
     if (user) {
@@ -42,6 +61,47 @@ export default function Profile() {
       setPhone(user.phone || "");
     }
   }, [user]);
+
+  const handleChangePassword = async (e) => {
+    e.preventDefault();
+    setPasswordError("");
+    setPasswordSuccess("");
+
+    if (!currentPassword) {
+      setPasswordError("Please enter your current password.");
+      return;
+    }
+    if (!newPassword) {
+      setPasswordError("Please enter a new password.");
+      return;
+    }
+    if (newPassword.length < 8) {
+      setPasswordError("New password must be at least 8 characters long.");
+      return;
+    }
+    if (newPassword !== confirmNewPassword) {
+      setPasswordError("New password and confirm password do not match.");
+      return;
+    }
+
+    try {
+      const res = await changePassword({
+        currentPassword,
+        newPassword,
+        confirmPassword: confirmNewPassword,
+      }).unwrap();
+
+      toast.success(res?.message || "Password updated successfully!");
+      setPasswordSuccess("Password updated successfully!");
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmNewPassword("");
+      setTimeout(() => setPasswordSuccess(""), 4000);
+    } catch (err) {
+      const msg = err?.data?.message || "Failed to update password.";
+      setPasswordError(msg);
+    }
+  };
 
   const initials = user?.name?.slice(0, 2).toUpperCase() || "AD";
 
@@ -64,11 +124,15 @@ export default function Profile() {
       return;
     }
 
+    const validPhone = normalizeIndianPhone(phone || user?.phone);
+
     const formData = new FormData();
     formData.append("image", file);
     formData.append("name", user?.name || name || "Administrator");
     if (user?.email) formData.append("email", user.email);
-    if (user?.phone || phone) formData.append("phone", user?.phone || phone || "");
+    if (validPhone && isValidIndianPhone(validPhone)) {
+      formData.append("phone", validPhone);
+    }
 
     try {
       setIsUploadingPhoto(true);
@@ -90,11 +154,15 @@ export default function Profile() {
   };
 
   const handleRemovePhoto = async () => {
+    const validPhone = normalizeIndianPhone(phone || user?.phone);
+
     const formData = new FormData();
     formData.append("remove_image", "true");
     formData.append("name", user?.name || name || "Administrator");
     if (user?.email) formData.append("email", user.email);
-    if (user?.phone || phone) formData.append("phone", user?.phone || phone || "");
+    if (validPhone && isValidIndianPhone(validPhone)) {
+      formData.append("phone", validPhone);
+    }
 
     try {
       setIsRemovingPhoto(true);
@@ -120,11 +188,21 @@ export default function Profile() {
     }
     setNameError("");
 
+    let normalizedPhone = undefined;
+    if (phone.trim()) {
+      if (!isValidIndianPhone(phone)) {
+        setPhoneError("Please enter a valid 10-digit mobile number starting with 6, 7, 8, or 9.");
+        return;
+      }
+      normalizedPhone = normalizeIndianPhone(phone);
+    }
+    setPhoneError("");
+
     try {
       setIsSavingDetails(true);
       const res = await updateProfile({
         name: name.trim(),
-        phone: phone.trim() || undefined,
+        phone: normalizedPhone,
         email: user?.email,
       }).unwrap();
 
@@ -155,8 +233,7 @@ export default function Profile() {
       <section
         className="profile-page-card"
         style={{
-          maxWidth: "800px",
-          margin: "0 auto",
+          maxWidth: "100%",
           background: "#ffffff",
           borderRadius: "16px",
           border: "1px solid var(--line)",
@@ -338,7 +415,7 @@ export default function Profile() {
             Account Information
           </h3>
 
-          <div style={{ display: "grid", gap: "20px" }}>
+          <div className="profile-form-grid">
             {/* Full Name */}
             <div>
               <label
@@ -381,21 +458,52 @@ export default function Profile() {
               )}
             </div>
 
-            {/* Email Address (Read-only credential) */}
+            {/* Email Address */}
             <div>
-              <label
+              <div
                 style={{
                   display: "flex",
                   alignItems: "center",
-                  gap: "6px",
-                  fontSize: "12px",
-                  fontWeight: 600,
-                  color: "var(--muted)",
+                  justifyContent: "space-between",
                   marginBottom: "6px",
                 }}
               >
-                <Mail size={15} /> Email Address
-              </label>
+                <label
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "6px",
+                    fontSize: "12px",
+                    fontWeight: 600,
+                    color: "var(--muted)",
+                    margin: 0,
+                  }}
+                >
+                  <Mail size={15} /> Email Address
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setShowEmailModal(true)}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    color: "#2563eb",
+                    fontSize: "12px",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    padding: "2px 6px",
+                    borderRadius: "4px",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "4px",
+                    transition: "background-color 0.15s",
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = "#eff6ff")}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = "none")}
+                >
+                  Change Email
+                </button>
+              </div>
               <div style={{ position: "relative" }}>
                 <input
                   type="email"
@@ -432,7 +540,7 @@ export default function Profile() {
                 </span>
               </div>
               <small style={{ color: "#9ca3af", fontSize: "11px", marginTop: "4px", display: "block" }}>
-                Email address serves as your primary admin login identity.
+                Click "Change Email" to update your login email.
               </small>
             </div>
 
@@ -454,14 +562,17 @@ export default function Profile() {
               <input
                 type="tel"
                 value={phone}
-                onChange={(e) => setPhone(e.target.value)}
+                onChange={(e) => {
+                  setPhone(sanitizePhoneInput(e.target.value));
+                  if (phoneError) setPhoneError("");
+                }}
                 placeholder="Enter 10-digit mobile number"
                 maxLength={10}
                 style={{
                   width: "100%",
                   height: "42px",
                   borderRadius: "8px",
-                  border: "1px solid #dedde6",
+                  border: `1px solid ${phoneError ? "#ef4444" : "#dedde6"}`,
                   padding: "0 14px",
                   fontSize: "13.5px",
                   color: "var(--ink)",
@@ -469,6 +580,11 @@ export default function Profile() {
                   outline: "none",
                 }}
               />
+              {phoneError && (
+                <small style={{ color: "#ef4444", fontSize: "11.5px", marginTop: "4px", display: "block" }}>
+                  {phoneError}
+                </small>
+              )}
             </div>
 
             {/* Role Badge */}
@@ -488,16 +604,19 @@ export default function Profile() {
               </label>
               <div
                 style={{
-                  display: "inline-flex",
+                  display: "flex",
                   alignItems: "center",
-                  gap: "6px",
+                  gap: "8px",
+                  height: "42px",
                   borderRadius: "8px",
-                  padding: "8px 14px",
+                  padding: "0 14px",
                   background: "#f4f2ff",
+                  border: "1px solid #e0dcfe",
                   color: "#4e42be",
                   fontSize: "13px",
                   fontWeight: 700,
                   textTransform: "capitalize",
+                  width: "100%",
                 }}
               >
                 <ShieldCheck size={16} />
@@ -540,6 +659,239 @@ export default function Profile() {
         </form>
       </section>
 
+      {/* Security & Password Change Section */}
+      <section
+        style={{
+          background: "var(--card-bg, #ffffff)",
+          borderRadius: "12px",
+          border: "1px solid var(--line)",
+          boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
+          marginTop: "24px",
+          overflow: "hidden",
+        }}
+      >
+        <form onSubmit={handleChangePassword} style={{ padding: "28px" }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              borderBottom: "1px solid var(--line)",
+              paddingBottom: "12px",
+              marginBottom: "20px",
+            }}
+          >
+            <div>
+              <h3
+                style={{
+                  margin: 0,
+                  fontSize: "15px",
+                  fontWeight: 700,
+                  color: "var(--ink)",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "8px",
+                }}
+              >
+                <KeyRound size={17} color="#4e42be" />
+                <span>Security & Password</span>
+              </h3>
+              <p style={{ margin: "4px 0 0", color: "var(--muted)", fontSize: "12px" }}>
+                Update your administrative password to keep your account secure.
+              </p>
+            </div>
+          </div>
+
+          {passwordSuccess && (
+            <div
+              style={{
+                marginBottom: "18px",
+                padding: "10px 14px",
+                background: "#ecfdf5",
+                border: "1px solid #a7f3d0",
+                borderRadius: "8px",
+                color: "#065f46",
+                fontSize: "13px",
+                display: "flex",
+                alignItems: "center",
+                gap: "8px",
+              }}
+            >
+              <CheckCircle2 size={16} />
+              <span>{passwordSuccess}</span>
+            </div>
+          )}
+
+          {passwordError && (
+            <div
+              style={{
+                marginBottom: "18px",
+                padding: "10px 14px",
+                background: "#fef2f2",
+                border: "1px solid #fecaca",
+                borderRadius: "8px",
+                color: "#991b1b",
+                fontSize: "13px",
+              }}
+            >
+              {passwordError}
+            </div>
+          )}
+
+          <div className="profile-form-grid">
+            {/* Current Password */}
+            <div className="profile-col-full">
+              <label
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  fontSize: "12px",
+                  fontWeight: 600,
+                  color: "var(--muted)",
+                  marginBottom: "6px",
+                }}
+              >
+                <Lock size={14} /> Current Password
+              </label>
+              <input
+                type="password"
+                value={currentPassword}
+                onChange={(e) => {
+                  setCurrentPassword(e.target.value);
+                  if (passwordError) setPasswordError("");
+                }}
+                placeholder="Enter current password"
+                autoComplete="current-password"
+                required
+                style={{
+                  width: "100%",
+                  height: "42px",
+                  borderRadius: "8px",
+                  border: "1px solid #dedde6",
+                  padding: "0 14px",
+                  fontSize: "13.5px",
+                  color: "var(--ink)",
+                  background: "#ffffff",
+                  outline: "none",
+                }}
+              />
+            </div>
+
+            {/* New Password */}
+            <div>
+              <label
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  fontSize: "12px",
+                  fontWeight: 600,
+                  color: "var(--muted)",
+                  marginBottom: "6px",
+                }}
+              >
+                <KeyRound size={14} /> New Password
+              </label>
+              <input
+                type="password"
+                value={newPassword}
+                onChange={(e) => {
+                  setNewPassword(e.target.value);
+                  if (passwordError) setPasswordError("");
+                }}
+                placeholder="Minimum 8 characters"
+                autoComplete="new-password"
+                required
+                style={{
+                  width: "100%",
+                  height: "42px",
+                  borderRadius: "8px",
+                  border: "1px solid #dedde6",
+                  padding: "0 14px",
+                  fontSize: "13.5px",
+                  color: "var(--ink)",
+                  background: "#ffffff",
+                  outline: "none",
+                }}
+              />
+            </div>
+
+            {/* Confirm New Password */}
+            <div>
+              <label
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  fontSize: "12px",
+                  fontWeight: 600,
+                  color: "var(--muted)",
+                  marginBottom: "6px",
+                }}
+              >
+                <CheckCircle2 size={14} /> Confirm New Password
+              </label>
+              <input
+                type="password"
+                value={confirmNewPassword}
+                onChange={(e) => {
+                  setConfirmNewPassword(e.target.value);
+                  if (passwordError) setPasswordError("");
+                }}
+                placeholder="Re-enter new password"
+                autoComplete="new-password"
+                required
+                style={{
+                  width: "100%",
+                  height: "42px",
+                  borderRadius: "8px",
+                  border: "1px solid #dedde6",
+                  padding: "0 14px",
+                  fontSize: "13.5px",
+                  color: "var(--ink)",
+                  background: "#ffffff",
+                  outline: "none",
+                }}
+              />
+            </div>
+          </div>
+
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "flex-end",
+              alignItems: "center",
+              marginTop: "28px",
+              paddingTop: "20px",
+              borderTop: "1px solid var(--line)",
+            }}
+          >
+            <Button
+              type="submit"
+              variant="primary"
+              disabled={isChangingPassword}
+              loading={isChangingPassword}
+              style={{
+                height: "40px",
+                padding: "0 22px",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "8px",
+                fontSize: "13px",
+                fontWeight: 600,
+              }}
+            >
+              <Lock size={15} />
+              <span>Update Password</span>
+            </Button>
+          </div>
+        </form>
+      </section>
+
+      {/* Dynamic QR Code Management Section */}
+      <DynamicQrSection />
+
       {/* Confirmation Dialog for Removing Profile Photo */}
       {showRemoveConfirm && (
         <ConfirmDialog
@@ -552,6 +904,13 @@ export default function Profile() {
           isLoading={isRemovingPhoto}
         />
       )}
+
+      {/* Change Admin Email Modal with Current Email OTP Verification */}
+      <ChangeEmailModal
+        isOpen={showEmailModal}
+        onClose={() => setShowEmailModal(false)}
+        currentEmail={user?.email || ""}
+      />
     </>
   );
 }

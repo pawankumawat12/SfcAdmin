@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useSelector } from "react-redux";
 import { useLocation } from "react-router-dom";
 import DataTable from "../../components/common/DataTable";
@@ -10,6 +10,7 @@ import Pagination from "../../components/ui/Pagination";
 import SearchInput from "../../components/ui/SearchInput";
 import useDebouncedValue from "../../utils/useDebouncedValue";
 import { exportToCsv } from "../../utils/csvExport";
+import { useThrottledCallback } from "../../utils/throttle";
 import toast from "react-hot-toast";
 import {
   useGetAdminOrdersQuery,
@@ -19,50 +20,61 @@ import {
   useUpdateOrderPaymentStatusMutation,
   useAcceptOrderMutation,
   useRejectOrderMutation,
+  useForwardOrderToStoreMutation,
   useGetAdminOrderByIdQuery,
 } from "../../services/orderApi";
+import { useGetStoresQuery, useGetMyStoreQuery } from "../../services/storeApi";
+import { useGetSettingPricingQuery } from "../../services/settingsApi";
 import { getAdminSocket } from "../../services/socket";
 import AdminOrderChatModal from "../../components/orders/AdminOrderChatModal";
 import {
   Clock,
   CheckCircle2,
-  Truck,
-  XCircle,
-  ChefHat,
-  Sparkles,
-  Receipt,
   MapPin,
+  Navigation,
   X,
   Eye,
-  Percent,
-  Package,
-  CreditCard,
   Banknote,
   QrCode,
-  Check,
   MessageCircle,
   Bell,
   ThumbsUp,
   ThumbsDown,
   AlertTriangle,
-  Search,
-  Zap,
   FileText,
   Download,
   Lock,
   RotateCcw,
+  Store,
+  Send,
 } from "lucide-react";
 import OrderDetailsModal from "../../modals/OrderDetailsModal";
 import RefundModal from "../../modals/RefundModal";
+import { WhatsAppIcon, openWhatsAppOrderShare } from "../../utils/whatsappOrder";
 
 export default function OrderList() {
   const location = useLocation();
   const accessToken = useSelector((state) => state.auth?.accessToken);
+  const user = useSelector((state) => state.auth?.user);
+  const isStoreOwner = user?.role === "store_owner";
+
+  // Admin tab: "all" or "store"
+  const [orderTab, setOrderTab] = useState("all");
+  const [selectedStoreId, setSelectedStoreId] = useState("");
+
   const [statusFilter, setStatusFilter] = useState("");
   const [page, setPage] = useState(1);
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState(() => new URLSearchParams(location.search).get("search") || "");
   const [refundModalOrder, setRefundModalOrder] = useState(null);
   const debouncedSearch = useDebouncedValue(search, 600);
+
+  useEffect(() => {
+    const qSearch = new URLSearchParams(location.search).get("search");
+    if (qSearch != null && qSearch !== search) {
+      setSearch(qSearch);
+      setPage(1);
+    }
+  }, [location.search]);
 
   const [selectedOrderDetails, setSelectedOrderDetails] = useState(null);
   const [activeChatOrder, setActiveChatOrder] = useState(null);
@@ -76,6 +88,14 @@ export default function OrderList() {
     () => location.state?.openChatOrderId || null
   );
 
+  // Admin: fetch stores for tab switcher
+  const { data: storesData } = useGetStoresQuery({ limit: 100 }, { skip: isStoreOwner });
+  const allStores = storesData?.stores || [];
+
+  // Store Owner: fetch own store details to check direct dispatch permissions
+  const { data: myStoreData } = useGetMyStoreQuery(undefined, { skip: !isStoreOwner });
+  const myStore = myStoreData?.store;
+
   const {
     data: orderResponse,
     isLoading,
@@ -86,7 +106,12 @@ export default function OrderList() {
     limit: 10,
     status: statusFilter || undefined,
     search: debouncedSearch.trim() || undefined,
+    // For admin store tab: pass storeId filter
+    ...(!isStoreOwner && orderTab === "store" && selectedStoreId
+      ? { storeId: selectedStoreId }
+      : {}),
   });
+  const { data: pricingSettingData } = useGetSettingPricingQuery();
   const [updateStatus, { isLoading: isUpdating }] = useUpdateOrderStatusMutation();
   const [bulkUpdateStatus, { isLoading: isBulkUpdating }] = useBulkUpdateOrderStatusMutation();
   const [updatePaymentStatus, { isLoading: isUpdatingPayment }] =
@@ -94,6 +119,27 @@ export default function OrderList() {
   const [acceptOrder, { isLoading: isAccepting }] = useAcceptOrderMutation();
   const [rejectOrder, { isLoading: isRejecting }] = useRejectOrderMutation();
   const [markProduced, { isLoading: isMarking }] = useMarkItemProducedMutation();
+  const [forwardOrder, { isLoading: isForwarding }] = useForwardOrderToStoreMutation();
+
+  const handleForwardToStore = async (order) => {
+    try {
+      const res = await forwardOrder({ id: order.id, store_id: order.store_id }).unwrap();
+      toast.success(res?.message || `Order #${order.order_number || order.id} dispatched to store!`);
+      refetch();
+    } catch (err) {
+      toast.error(err?.data?.message || err?.message || "Failed to dispatch order to store.");
+    }
+  };
+
+  const handleShareOrderToWhatsApp = (order) => {
+    try {
+      openWhatsAppOrderShare(order);
+      toast.success("Opening WhatsApp with order details...");
+    } catch (err) {
+      console.error("Failed to share to WhatsApp:", err);
+      toast.error("Failed to prepare WhatsApp message");
+    }
+  };
 
   // Selection & Bulk State
   const [selectedIds, setSelectedIds] = useState([]);
@@ -117,24 +163,47 @@ export default function OrderList() {
     }
   }, [pendingChatOrderData, pendingChatOrderId]);
 
-  const orders = orderResponse?.data || [];
+  const rawOrders = orderResponse?.data || [];
+  const orders = useMemo(() => {
+    if (isStoreOwner) {
+      // Store owners must never see orders that were delivered or handled directly by Admin without being dispatched to the store
+      return rawOrders.filter((o) => Boolean(o.is_forwarded_to_store));
+    }
+    return rawOrders;
+  }, [rawOrders, isStoreOwner]);
+
+  const activeOrderDetails = useMemo(() => {
+    if (!selectedOrderDetails) return null;
+    const found = orders?.find((o) => o.id === selectedOrderDetails.id);
+    return found ? { ...selectedOrderDetails, ...found } : selectedOrderDetails;
+  }, [orders, selectedOrderDetails]);
+
   const pagination = orderResponse?.pagination;
 
-  // Socket.IO real-time event listeners for Admin
+  // Socket.IO real-time event listeners for Admin & Store Owner
   useEffect(() => {
     const socket = getAdminSocket();
+    if (!socket) return;
 
     const handleNewOrder = (data) => {
+      const incomingOrder = data?.order || data;
+      if (isStoreOwner && !incomingOrder?.is_forwarded_to_store) {
+        return;
+      }
+      const customerLabel = isStoreOwner
+        ? "Customer"
+        : incomingOrder?.customer_name || "Customer";
       setLiveAlert({
         type: "order",
         title: "New Order Received!",
-        message: `Order #${data.order?.order_number || data.order?.id} from ${data.order?.customer_name} (₹${data.order?.total_amount})`,
-        order: data.order,
+        message: `Order #${incomingOrder?.order_number || incomingOrder?.id} from ${customerLabel} (₹${incomingOrder?.total_amount})`,
+        order: incomingOrder,
       });
       refetch();
     };
 
     const handleNewMessage = (data) => {
+      if (isStoreOwner) return;
       setLiveAlert({
         type: "message",
         title: `New Message on #${data.orderNumber}`,
@@ -143,25 +212,62 @@ export default function OrderList() {
       });
     };
 
-    const handleOrderUpdated = () => {
+    const handleOrderUpdated = (data) => {
+      // Live silent update - refetch latest orders without noisy alert
       refetch();
+      if (data?.order?.id) {
+        setSelectedOrderDetails((prev) => {
+          if (!prev || Number(prev.id) !== Number(data.order.id)) return prev;
+          return { ...prev, ...data.order };
+        });
+      }
     };
 
-    socket.on("admin_new_order", handleNewOrder);
+    const handleOrderCancelled = (data) => {
+      if (isStoreOwner && data?.order && !data.order.is_forwarded_to_store) {
+        return;
+      }
+      refetch();
+      if (data?.order?.id) {
+        setSelectedOrderDetails((prev) => {
+          if (!prev || Number(prev.id) !== Number(data.order.id)) return prev;
+          return { ...prev, ...data.order, status: "Cancelled" };
+        });
+      }
+      setLiveAlert({
+        type: "warning",
+        title: `Order Cancelled: #${data.orderNumber || data.orderId}`,
+        message: data.cancelReason ? `Reason: ${data.cancelReason}` : "Cancelled by customer before kitchen preparation.",
+        orderId: data.orderId,
+      });
+    };
+
+    if (isStoreOwner) {
+      socket.on("new_order", handleNewOrder);
+    } else {
+      socket.on("admin_new_order", handleNewOrder);
+    }
     socket.on("admin_new_message", handleNewMessage);
     socket.on("admin_order_updated", handleOrderUpdated);
-    socket.on("admin_order_cancelled", handleOrderUpdated);
+    socket.on("admin_order_status_updated", handleOrderUpdated);
+    socket.on("admin_order_cancelled", handleOrderCancelled);
 
     return () => {
+      socket.off("new_order", handleNewOrder);
       socket.off("admin_new_order", handleNewOrder);
       socket.off("admin_new_message", handleNewMessage);
       socket.off("admin_order_updated", handleOrderUpdated);
-      socket.off("admin_order_cancelled", handleOrderUpdated);
+      socket.off("admin_order_status_updated", handleOrderUpdated);
+      socket.off("admin_order_cancelled", handleOrderCancelled);
     };
-  }, [refetch]);
+  }, [refetch, isStoreOwner]);
 
   const handleStatusChange = async (orderId, newStatus) => {
     const order = orders.find((o) => o.id === orderId);
+    if (order && order.status === "Cancelled") {
+      alert("This order was cancelled and its status cannot be modified.");
+      return;
+    }
     if (
       order &&
       order.payment_method === "Online Payment" &&
@@ -357,6 +463,9 @@ export default function OrderList() {
       parsedAddress,
       parsedPricing,
       parsedPaymentDetails,
+      notes: order.notes
+        ? order.notes.replace(/Cashier:\s*undefined/gi, "Cashier: Admin").replace(/Cashier:\s*,/gi, "Cashier: Admin,")
+        : "",
     };
   });
 
@@ -488,17 +597,25 @@ export default function OrderList() {
     }
   };
 
+  const throttledConfirmBulkStatusChange = useThrottledCallback(confirmBulkStatusChange, 1500);
+  const throttledExportSelected = useThrottledCallback(handleExportSelected, 2000);
+  const throttledExportAll = useThrottledCallback(handleExportAll, 2000);
+
   return (
     <>
       <div className="section-head">
         <div>
-          <h1>Orders</h1>
-          <p>Track and manage customer orders, payments, pricing breakdowns, and kitchen fulfillment.</p>
+          <h1>{isStoreOwner ? "Store Orders" : "Orders"}</h1>
+          <p>
+            {isStoreOwner
+              ? "Track, prepare, and manage fulfillment for orders dispatched to your store."
+              : "Track and manage customer orders, store branch dispatch, pricing breakdowns, and kitchen fulfillment."}
+          </p>
         </div>
         <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
           <Button
             variant="outline"
-            onClick={handleExportAll}
+            onClick={throttledExportAll}
             disabled={isExportingAll}
             loading={isExportingAll}
             title="Export orders matching current filters as CSV"
@@ -511,7 +628,7 @@ export default function OrderList() {
               setSearch(e.target.value);
               setPage(1);
             }}
-            placeholder="Search by order #, customer..."
+            placeholder={isStoreOwner ? "Search by order #..." : "Search by order #, customer..."}
             style={{ width: "240px" }}
           />
           <Select
@@ -524,11 +641,216 @@ export default function OrderList() {
           >
             <option value="">All Statuses</option>
             <option value="Pending">Pending</option>
+            <option value="Accepted">Accepted</option>
             <option value="Preparing">Preparing</option>
             <option value="Out for Delivery">Out for Delivery</option>
             <option value="Delivered">Delivered</option>
             <option value="Cancelled">Cancelled</option>
           </Select>
+        </div>
+      </div>
+
+      {/* Admin Tab Switcher: All Orders / Store-wise Orders */}
+      {!isStoreOwner && (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "8px",
+            marginBottom: "20px",
+            borderBottom: "1px solid #e5e7eb",
+            paddingBottom: "12px",
+            flexWrap: "wrap",
+          }}
+        >
+          <button
+            type="button"
+            onClick={() => {
+              setOrderTab("all");
+              setSelectedStoreId("");
+              setPage(1);
+            }}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "7px",
+              padding: "8px 18px",
+              borderRadius: "10px",
+              border: orderTab === "all" ? "1.5px solid #6253e8" : "1px solid #e5e7eb",
+              background: orderTab === "all" ? "#ede9fe" : "#ffffff",
+              color: orderTab === "all" ? "#4f3ef5" : "#4b5563",
+              fontWeight: 700,
+              fontSize: "13.5px",
+              cursor: "pointer",
+              transition: "all 0.15s ease",
+            }}
+          >
+            <FileText size={16} />
+            All Orders
+            {pagination?.totalItems !== undefined && orderTab === "all" && (
+              <span
+                style={{
+                  background: "#4f3ef5",
+                  color: "#fff",
+                  fontSize: "11px",
+                  fontWeight: 700,
+                  padding: "2px 8px",
+                  borderRadius: "9999px",
+                }}
+              >
+                {pagination.totalItems}
+              </span>
+            )}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setOrderTab("store");
+              setPage(1);
+            }}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "7px",
+              padding: "8px 18px",
+              borderRadius: "10px",
+              border: orderTab === "store" ? "1.5px solid #166534" : "1px solid #e5e7eb",
+              background: orderTab === "store" ? "#f0fdf4" : "#ffffff",
+              color: orderTab === "store" ? "#166534" : "#4b5563",
+              fontWeight: 700,
+              fontSize: "13.5px",
+              cursor: "pointer",
+              transition: "all 0.15s ease",
+            }}
+          >
+            <Store size={16} />
+            Store-wise Orders
+          </button>
+
+          {/* Store dropdown — shown when store tab is active */}
+          {orderTab === "store" && (
+            <Select
+              value={selectedStoreId}
+              onChange={(e) => {
+                setSelectedStoreId(e.target.value);
+                setPage(1);
+              }}
+              style={{ minWidth: "200px", maxWidth: "280px" }}
+            >
+              <option value="">— Select a Store —</option>
+              {allStores.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name} {s.city ? `• ${s.city}` : ""}
+                </option>
+              ))}
+            </Select>
+          )}
+
+          {/* Selected store info banner */}
+          {orderTab === "store" && selectedStoreId && (() => {
+            const store = allStores.find((s) => String(s.id) === String(selectedStoreId));
+            return store ? (
+              <div
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  background: "#f0fdf4",
+                  border: "1px solid #bbf7d0",
+                  borderRadius: "8px",
+                  padding: "5px 12px",
+                  fontSize: "12px",
+                  fontWeight: 600,
+                  color: "#166534",
+                }}
+              >
+                <Store size={13} />
+                {store.name}
+                {pagination?.totalItems !== undefined && (
+                  <span
+                    style={{
+                      background: "#166534",
+                      color: "#fff",
+                      borderRadius: "9999px",
+                      padding: "1px 7px",
+                      fontSize: "11px",
+                      fontWeight: 700,
+                    }}
+                  >
+                    {pagination.totalItems} orders
+                  </span>
+                )}
+              </div>
+            ) : null;
+          })()}
+        </div>
+      )}
+
+      {/* Store tab empty state */}
+      {!isStoreOwner && orderTab === "store" && !selectedStoreId && (
+        <div
+          style={{
+            padding: "40px",
+            textAlign: "center",
+            background: "#f8fafc",
+            borderRadius: "14px",
+            border: "1px solid #e2e8f0",
+            marginBottom: "20px",
+          }}
+        >
+          <Store size={36} style={{ color: "#94a3b8", marginBottom: "12px" }} />
+          <div style={{ fontSize: "15px", fontWeight: 700, color: "#334155", marginBottom: "6px" }}>
+            Select a Store to View Orders
+          </div>
+          <p style={{ color: "#64748b", fontSize: "13px", margin: 0 }}>
+            Use the dropdown above to filter orders by a specific branch or store location.
+          </p>
+        </div>
+      )}
+
+
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))",
+          gap: "16px",
+          marginBottom: "20px",
+        }}
+      >
+        <div className="card" style={{ padding: "16px 20px", borderLeft: "4px solid #6253e8" }}>
+          <span style={{ fontSize: "12px", fontWeight: 600, color: "#6253e8" }}>Total Orders</span>
+          <div style={{ fontSize: "24px", fontWeight: 800, color: "#111827", marginTop: "4px" }}>
+            {orderResponse?.stats?.totalOrders ?? pagination?.totalItems ?? orders.length}
+          </div>
+        </div>
+
+        <div className="card" style={{ padding: "16px 20px", borderLeft: "4px solid #d97706" }}>
+          <span style={{ fontSize: "12px", fontWeight: 600, color: "#d97706" }}>Preparing</span>
+          <div style={{ fontSize: "24px", fontWeight: 800, color: "#d97706", marginTop: "4px" }}>
+            {orderResponse?.stats?.preparingOrders ?? orders.filter((o) => (o.status || "").toLowerCase() === "preparing").length}
+          </div>
+        </div>
+
+        <div className="card" style={{ padding: "16px 20px", borderLeft: "4px solid #2563eb" }}>
+          <span style={{ fontSize: "12px", fontWeight: 600, color: "#2563eb" }}>Out for Delivery</span>
+          <div style={{ fontSize: "24px", fontWeight: 800, color: "#2563eb", marginTop: "4px" }}>
+            {orderResponse?.stats?.outForDeliveryOrders ?? orders.filter((o) => (o.status || "").toLowerCase().includes("delivery")).length}
+          </div>
+        </div>
+
+        <div className="card" style={{ padding: "16px 20px", borderLeft: "4px solid #16a34a" }}>
+          <span style={{ fontSize: "12px", fontWeight: 600, color: "#16a34a" }}>Delivered</span>
+          <div style={{ fontSize: "24px", fontWeight: 800, color: "#16a34a", marginTop: "4px" }}>
+            {orderResponse?.stats?.deliveredOrders ?? orders.filter((o) => (o.status || "").toLowerCase() === "delivered").length}
+          </div>
+        </div>
+
+        <div className="card" style={{ padding: "16px 20px", borderLeft: "4px solid #dc2626" }}>
+          <span style={{ fontSize: "12px", fontWeight: 600, color: "#dc2626" }}>Cancelled</span>
+          <div style={{ fontSize: "24px", fontWeight: 800, color: "#dc2626", marginTop: "4px" }}>
+            {orderResponse?.stats?.cancelledOrders ?? orders.filter((o) => (o.status || "").toLowerCase() === "cancelled").length}
+          </div>
         </div>
       </div>
 
@@ -546,10 +868,10 @@ export default function OrderList() {
                   ? "#ede9fe"
                   : "#eff6ff",
             border: `1px solid ${liveAlert.type === "order"
-                ? "#86efac"
-                : liveAlert.type === "payment"
-                  ? "#c4b5fd"
-                  : "#bfdbfe"
+              ? "#86efac"
+              : liveAlert.type === "payment"
+                ? "#c4b5fd"
+                : "#bfdbfe"
               }`,
             color:
               liveAlert.type === "order"
@@ -628,7 +950,7 @@ export default function OrderList() {
           </Button>
           <Button
             variant="outline"
-            onClick={handleExportSelected}
+            onClick={throttledExportSelected}
             style={{ fontSize: "13px", padding: "6px 12px" }}
           >
             <Download size={14} /> Export Selected ({selectedIds.length})
@@ -678,51 +1000,55 @@ export default function OrderList() {
           },
           {
             key: "customer",
-            label: "CUSTOMER",
+            label: isStoreOwner ? "DELIVERY LOCATION" : "CUSTOMER",
             render: (value, item) => (
               <div style={{ maxWidth: "180px" }}>
-                <div
-                  style={{
-                    fontWeight: 600,
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                  }}
-                  title={value}
-                >
-                  {value}
-                </div>
-                <div
-                  style={{
-                    fontSize: "11px",
-                    color: "var(--color-text-muted)",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                  }}
-                  title={item.customer_phone || item.customer_email}
-                >
-                  {item.customer_phone || item.customer_email}
-                </div>
-                  {item.deliveryAddress && (
+                {!isStoreOwner && (
+                  <>
                     <div
                       style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "4px",
-                        fontSize: "11px",
-                        color: "#6b7280",
-                        maxWidth: "180px",
+                        fontWeight: 600,
                         overflow: "hidden",
                         textOverflow: "ellipsis",
                         whiteSpace: "nowrap",
                       }}
-                      title={item.deliveryAddress}
+                      title={value}
                     >
-                      <MapPin size={11} className="shrink-0 text-gray-400" />
-                      <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{item.deliveryAddress}</span>
+                      {value}
                     </div>
-                  )}
+                    <div
+                      style={{
+                        fontSize: "11px",
+                        color: "var(--color-text-muted)",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                      title={item.customer_phone || item.customer_email}
+                    >
+                      {item.customer_phone || item.customer_email}
+                    </div>
+                  </>
+                )}
+                {item.deliveryAddress && (
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "4px",
+                      fontSize: "11px",
+                      color: "#6b7280",
+                      maxWidth: "180px",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                    }}
+                    title={item.deliveryAddress}
+                  >
+                    <MapPin size={11} className="shrink-0 text-gray-400" />
+                    <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{item.deliveryAddress}</span>
+                  </div>
+                )}
               </div>
             ),
           },
@@ -746,7 +1072,7 @@ export default function OrderList() {
                       <span>
                         {it.quantity}x {it.product_name}
                       </span>
-                    
+
                     </div>
                   ))}
                 </div>
@@ -810,6 +1136,167 @@ export default function OrderList() {
                   {Number(taxAmount || 0) > 0 && (
                     <div style={{ fontSize: "10px", color: "#6b7280" }}>
                       Tax: ₹{Number(taxAmount).toLocaleString("en-IN")}
+                    </div>
+                  )}
+                </div>
+              );
+            },
+          },
+          {
+            key: "store_name",
+            label: "BRANCH / DISPATCH",
+            render: (_val, item) => {
+              const hasStore = Boolean(item.store_id);
+              const isForwarded = Boolean(item.is_forwarded_to_store);
+              const storeTitle = item.store_name || "Direct Store";
+              const isDelivered = (item.status || "").toLowerCase() === "delivered";
+              const isCancelled = (item.status || "").toLowerCase() === "cancelled";
+
+              return (
+                <div style={{ display: "flex", flexDirection: "column", gap: "6px", minWidth: "140px" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "5px", fontWeight: 700, fontSize: "12px", color: "#1f2937" }}>
+                    <Store size={13} style={{ color: hasStore ? "#4f46e5" : "#9ca3af", flexShrink: 0 }} />
+                    <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={hasStore ? storeTitle : "Main SFC / Admin Direct"}>
+                      {hasStore ? storeTitle : "Main SFC Direct"}
+                    </span>
+                  </div>
+
+                  {hasStore && (
+                    <div>
+                      {isForwarded ? (
+                        <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                          <span
+                            style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: "3px",
+                              padding: "2px 6px",
+                              borderRadius: "4px",
+                              fontSize: "10px",
+                              fontWeight: 700,
+                              backgroundColor: "#dcfce7",
+                              color: "#166534",
+                              border: "1px solid #bbf7d0",
+                              whiteSpace: "nowrap",
+                            }}
+                            title={`Dispatched to store on ${item.forwarded_at ? new Date(item.forwarded_at).toLocaleString() : "Order Placement"}`}
+                          >
+                            <CheckCircle2 size={10} /> Dispatched to Store
+                          </span>
+                          {!isStoreOwner && (
+                            <button
+                              type="button"
+                              onClick={() => handleShareOrderToWhatsApp(item)}
+                              style={{
+                                padding: "3px 7px",
+                                fontSize: "10.5px",
+                                fontWeight: 700,
+                                backgroundColor: "#25D366",
+                                color: "#ffffff",
+                                border: "none",
+                                borderRadius: "5px",
+                                cursor: "pointer",
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: "4px",
+                                whiteSpace: "nowrap",
+                                boxShadow: "0 1px 2px rgba(37, 211, 102, 0.25)",
+                              }}
+                              title="Re-send order details to store owner via WhatsApp"
+                            >
+                              <WhatsAppIcon size={12} /> WhatsApp Store
+                            </button>
+                          )}
+                        </div>
+                      ) : isDelivered ? (
+                        <span
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "3px",
+                            padding: "2px 6px",
+                            borderRadius: "4px",
+                            fontSize: "10px",
+                            fontWeight: 700,
+                            backgroundColor: "#f3f4f6",
+                            color: "#4b5563",
+                            border: "1px solid #e5e7eb",
+                            whiteSpace: "nowrap",
+                          }}
+                          title="Delivered directly by Admin without forwarding to store"
+                        >
+                          <CheckCircle2 size={10} /> Delivered Directly
+                        </span>
+                      ) : (
+                        <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                          <span
+                            style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: "3px",
+                              padding: "2px 6px",
+                              borderRadius: "4px",
+                              fontSize: "10px",
+                              fontWeight: 700,
+                              backgroundColor: "#fef3c7",
+                              color: "#b45309",
+                              border: "1px solid #fde68a",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            <Clock size={10} /> Pending Dispatch
+                          </span>
+                          {!isStoreOwner && !isCancelled && (
+                            <div style={{ display: "flex", alignItems: "center", gap: "5px", flexWrap: "wrap" }}>
+                              <button
+                                type="button"
+                                disabled={isForwarding}
+                                onClick={() => handleForwardToStore(item)}
+                                style={{
+                                  padding: "4px 8px",
+                                  fontSize: "11px",
+                                  fontWeight: 700,
+                                  backgroundColor: "#4f46e5",
+                                  color: "#ffffff",
+                                  border: "none",
+                                  borderRadius: "6px",
+                                  cursor: "pointer",
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: "4px",
+                                  whiteSpace: "nowrap",
+                                  boxShadow: "0 1px 2px rgba(79, 70, 229, 0.2)",
+                                }}
+                                title="Send / dispatch this order to the store owner in system"
+                              >
+                                <Send size={10} /> Forward
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleShareOrderToWhatsApp(item)}
+                                style={{
+                                  padding: "4px 8px",
+                                  fontSize: "11px",
+                                  fontWeight: 700,
+                                  backgroundColor: "#25D366",
+                                  color: "#ffffff",
+                                  border: "none",
+                                  borderRadius: "6px",
+                                  cursor: "pointer",
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: "4px",
+                                  whiteSpace: "nowrap",
+                                  boxShadow: "0 1px 2px rgba(37, 211, 102, 0.25)",
+                                }}
+                                title="Send order details to Store Owner via WhatsApp"
+                              >
+                                <WhatsAppIcon size={12} /> WhatsApp
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -893,8 +1380,23 @@ export default function OrderList() {
                     </div>
                   )}
 
-                  {/* RULE 1: If Refunded, permanently locked */}
-                  {isRefunded ? (
+                  {/* Store Owner: Completely remove Refund actions and select dropdown; show clean status badge */}
+                  {isStoreOwner ? (
+                    <div
+                      style={{
+                        fontSize: "11px",
+                        padding: "3px 8px",
+                        borderRadius: "6px",
+                        fontWeight: 700,
+                        backgroundColor: statusBg,
+                        color: statusColor,
+                        border: `1px solid ${statusBorder}`,
+                        width: "fit-content",
+                      }}
+                    >
+                      {currentStatus}
+                    </div>
+                  ) : isRefunded ? (
                     <div
                       style={{
                         fontSize: "11px",
@@ -1048,7 +1550,7 @@ export default function OrderList() {
                 <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
                   <Select
                     value={value}
-                    disabled={isUpdating || (isUnpaidOnline && value === "Pending Payment")}
+                    disabled={isUpdating || value === "Cancelled" || (isUnpaidOnline && value === "Pending Payment")}
                     onChange={(e) => handleStatusChange(item.id, e.target.value)}
                     style={{
                       fontSize: "12px",
@@ -1059,30 +1561,37 @@ export default function OrderList() {
                       backgroundColor:
                         value === "Pending" || value === "Order Placed" || value === "Pending Payment"
                           ? "#fef3c7"
-                          : value === "Preparing"
-                            ? "#dbeafe"
-                            : value === "Out for Delivery"
-                              ? "#ffedd5"
-                              : value === "Delivered"
-                                ? "#dcfce7"
-                                : value === "Cancelled"
-                                  ? "#fee2e2"
-                                  : "#ffffff",
+                          : value === "Accepted"
+                            ? "#ecfdf5"
+                            : value === "Preparing"
+                              ? "#dbeafe"
+                              : value === "Out for Delivery"
+                                ? "#ffedd5"
+                                : value === "Delivered"
+                                  ? "#dcfce7"
+                                  : value === "Cancelled"
+                                    ? "#fee2e2"
+                                    : "#ffffff",
                       color:
                         value === "Pending" || value === "Order Placed" || value === "Pending Payment"
                           ? "#b45309"
-                          : value === "Preparing"
-                            ? "#1e40af"
-                            : value === "Out for Delivery"
-                              ? "#c2410c"
-                              : value === "Delivered"
-                                ? "#15803d"
-                                : value === "Cancelled"
-                                  ? "#b91c1c"
-                                  : "#374151",
+                          : value === "Accepted"
+                            ? "#065f46"
+                            : value === "Preparing"
+                              ? "#1e40af"
+                              : value === "Out for Delivery"
+                                ? "#c2410c"
+                                : value === "Delivered"
+                                  ? "#15803d"
+                                  : value === "Cancelled"
+                                    ? "#b91c1c"
+                                    : "#374151",
                     }}
                   >
                     <option value="Pending">Pending</option>
+                    <option value="Accepted" disabled={isUnpaidOnline}>
+                      Accepted {isUnpaidOnline ? "(Requires Payment)" : ""}
+                    </option>
                     <option value="Preparing" disabled={isUnpaidOnline}>
                       Preparing {isUnpaidOnline ? "(Requires Payment)" : ""}
                     </option>
@@ -1179,13 +1688,21 @@ export default function OrderList() {
                     </div>
                   )}
                   {(() => {
+                    // Chat option is only provided to store owners whose store has DIRECT ORDER DISPATCH permission (auto_forward_orders)
+                    const hasDirectDispatch = Boolean(
+                      myStore?.auto_forward_orders ?? item.store_auto_forward_orders
+                    );
+                    if (isStoreOwner && !hasDirectDispatch) {
+                      return null;
+                    }
+
                     const isChatExpired =
                       item.chatStatus?.isExpired ??
                       item.chat_status?.is_expired ??
                       ((item.status === "Delivered" || item.status === "Completed") &&
                         item.delivered_at &&
                         Date.now() >
-                          new Date(item.delivered_at).getTime() + 20 * 60 * 1000);
+                        new Date(item.delivered_at).getTime() + 20 * 60 * 1000);
 
                     return (
                       <button
@@ -1222,9 +1739,9 @@ export default function OrderList() {
                     );
                   })()}
                 </div>
-                );
-              },
+              );
             },
+          },
           { key: "createdAtFormatted", label: "TIME" },
           // {
           //   key: "actions",
@@ -1240,16 +1757,91 @@ export default function OrderList() {
           //   ),
           // }
         ]}
-        renderActions={(item) => (
-          <Button
-            variant="view"
-            title="View Order Details"
-            aria-label="View Order Details"
-            onClick={() => setSelectedOrderDetails(item)}
-          >
-            <Eye size={15} />
-          </Button>
-        )}
+        renderActions={(item) => {
+          const addr = item.parsedAddress || item.delivery_address_json;
+          let parsedAddr = null;
+          try {
+            parsedAddr = typeof addr === "string" ? JSON.parse(addr || "{}") : addr;
+          } catch (_) { }
+
+          const hasCoords =
+            parsedAddr?.latitude != null &&
+            parsedAddr?.longitude != null &&
+            Number(parsedAddr.latitude) !== 0 &&
+            Number(parsedAddr.longitude) !== 0;
+
+          const destination = hasCoords
+            ? `${parsedAddr.latitude},${parsedAddr.longitude}`
+            : parsedAddr
+              ? encodeURIComponent(
+                [
+                  parsedAddr.house_number,
+                  parsedAddr.building_name,
+                  parsedAddr.formatted_address,
+                  parsedAddr.city,
+                  parsedAddr.pincode,
+                ]
+                  .filter(Boolean)
+                  .join(", ")
+              )
+              : item.shipping_address
+                ? encodeURIComponent(item.shipping_address)
+                : null;
+
+          let pricing =
+            item.parsedPricing ||
+            item.pricing_details_json ||
+            item.pricing_details ||
+            item.pricing_breakdown;
+          try {
+            if (typeof pricing === "string") pricing = JSON.parse(pricing);
+          } catch (_) { }
+
+          const storeLat =
+            item.store_latitude ??
+            pricing?.store_latitude ??
+            pricingSettingData?.data?.store_latitude;
+          const storeLng =
+            item.store_longitude ??
+            pricing?.store_longitude ??
+            pricingSettingData?.data?.store_longitude;
+          const hasStoreCoords =
+            storeLat != null &&
+            storeLng != null &&
+            Number(storeLat) !== 0 &&
+            Number(storeLng) !== 0;
+
+          const mapUrl = destination
+            ? hasStoreCoords
+              ? `https://www.google.com/maps/dir/?api=1&origin=${storeLat},${storeLng}&destination=${destination}&travelmode=driving`
+              : `https://www.google.com/maps/dir/?api=1&destination=${destination}&travelmode=driving`
+            : null;
+
+          return (
+            <div className="d-flex align-items-center gap-1">
+              {mapUrl && (
+                <a
+                  href={mapUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="btn btn-sm btn-outline-success p-1 rounded-2 d-inline-flex align-items-center justify-content-center"
+                  style={{ width: "32px", height: "32px" }}
+                  title="Deliver via Google Maps Route"
+                >
+                  <Navigation size={14} />
+                </a>
+              )}
+              <Button
+                variant="view"
+                title="View Order Details"
+                aria-label="View Order Details"
+                onClick={() => setSelectedOrderDetails(item)}
+              >
+                <Eye size={15} />
+              </Button>
+            </div>
+          );
+        }}
       />
 
       <Pagination
@@ -1263,31 +1855,31 @@ export default function OrderList() {
 
 
 
-{selectedOrderDetails && (
-  <OrderDetailsModal
-    order={selectedOrderDetails}
-    onClose={() => setSelectedOrderDetails(null)}
-    onPaymentStatusChange={handlePaymentStatusChange}
-    onOpenRefund={(order) => setRefundModalOrder(order)}
-    isUpdatingPayment={isUpdatingPayment}
-  />
-)}
+      {selectedOrderDetails && (
+        <OrderDetailsModal
+          order={activeOrderDetails}
+          onClose={() => setSelectedOrderDetails(null)}
+          onPaymentStatusChange={!isStoreOwner ? handlePaymentStatusChange : null}
+          onOpenRefund={!isStoreOwner ? (order) => setRefundModalOrder(order) : null}
+          isUpdatingPayment={isUpdatingPayment}
+        />
+      )}
 
-{refundModalOrder && (
-  <RefundModal
-    isOpen={Boolean(refundModalOrder)}
-    order={refundModalOrder}
-    onClose={() => setRefundModalOrder(null)}
-    onRefundSuccess={(updated) => {
-      if (selectedOrderDetails?.id === updated?.id) {
-        setSelectedOrderDetails(updated);
-      }
-    }}
-  />
-)}
-      
+      {!isStoreOwner && refundModalOrder && (
+        <RefundModal
+          isOpen={Boolean(refundModalOrder)}
+          order={refundModalOrder}
+          onClose={() => setRefundModalOrder(null)}
+          onRefundSuccess={(updated) => {
+            if (selectedOrderDetails?.id === updated?.id) {
+              setSelectedOrderDetails(updated);
+            }
+          }}
+        />
+      )}
 
-     {acceptModalOrder && (
+
+      {acceptModalOrder && (
         <div
           style={{
             position: "fixed",
@@ -1336,10 +1928,12 @@ export default function OrderList() {
             </div>
 
             <div style={{ backgroundColor: "#f9fafb", borderRadius: "12px", padding: "14px", marginBottom: "16px", fontSize: "12px", display: "flex", flexDirection: "column", gap: "6px" }}>
-              <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <span style={{ color: "#6b7280" }}>Customer</span>
-                <span style={{ fontWeight: 700 }}>{acceptModalOrder.customer_name}</span>
-              </div>
+              {!isStoreOwner && (
+                <div style={{ display: "flex", justifyContent: "space-between" }}>
+                  <span style={{ color: "#6b7280" }}>Customer</span>
+                  <span style={{ fontWeight: 700 }}>{acceptModalOrder.customer_name}</span>
+                </div>
+              )}
               <div style={{ display: "flex", justifyContent: "space-between" }}>
                 <span style={{ color: "#6b7280" }}>Total Amount</span>
                 <span style={{ fontWeight: 800, color: "#111827" }}>₹{Number(acceptModalOrder.total_amount || 0).toLocaleString("en-IN")}</span>
@@ -1396,7 +1990,7 @@ export default function OrderList() {
             </div>
           </div>
         </div>
-      )} 
+      )}
 
 
       {/* REJECT ORDER MODAL */}
@@ -1494,7 +2088,7 @@ export default function OrderList() {
               </div>
             </div>
 
-         
+
 
             <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px" }}>
               <button
@@ -1550,49 +2144,49 @@ export default function OrderList() {
 
       {/* BULK STATUS CONFIRMATION DIALOG */}
       {bulkConfirmOpen && (
-      <ConfirmDialog
-        isOpen={bulkConfirmOpen}
-        title={`Update Status of ${selectedIds.length} Order(s)`}
-        message={
-          <div>
-            <p>
-              Are you sure you want to change the status of <strong>{selectedIds.length}</strong> selected order(s) to <strong>"{bulkStatusTarget}"</strong>?
-            </p>
-            {bulkStatusTarget === "Cancelled" && (
-              <div style={{ marginTop: "12px" }}>
-                <label style={{ display: "block", fontSize: "12px", fontWeight: 600, marginBottom: "4px" }}>
-                  Cancellation Reason (Optional):
-                </label>
-                <textarea
-                  value={bulkCancelReason}
-                  onChange={(e) => setBulkCancelReason(e.target.value)}
-                  placeholder="e.g. Batch cancelled due to kitchen closure or inventory unavailability"
-                  rows={3}
-                  style={{
-                    width: "100%",
-                    padding: "8px",
-                    borderRadius: "6px",
-                    border: "1px solid #d1d5db",
-                    fontSize: "13px",
-                  }}
-                />
-              </div>
-            )}
-            {["Preparing", "Out for Delivery", "Delivered"].includes(bulkStatusTarget) && (
-              <p style={{ marginTop: "8px", fontSize: "12px", color: "#b45309" }}>
-                ⚠️ Notice: Unpaid online-payment orders cannot be advanced to fulfillment states and will be automatically skipped to protect order integrity.
+        <ConfirmDialog
+          isOpen={bulkConfirmOpen}
+          title={`Update Status of ${selectedIds.length} Order(s)`}
+          message={
+            <div>
+              <p>
+                Are you sure you want to change the status of <strong>{selectedIds.length}</strong> selected order(s) to <strong>"{bulkStatusTarget}"</strong>?
               </p>
-            )}
-          </div>
-        }
-        confirmLabel={isBulkUpdating ? "Updating..." : "Confirm Update"}
-        onConfirm={confirmBulkStatusChange}
-        onCancel={() => {
-          setBulkConfirmOpen(false);
-          setBulkCancelReason("");
-        }}
-        isDestructive={bulkStatusTarget === "Cancelled"}
-      />
+              {bulkStatusTarget === "Cancelled" && (
+                <div style={{ marginTop: "12px" }}>
+                  <label style={{ display: "block", fontSize: "12px", fontWeight: 600, marginBottom: "4px" }}>
+                    Cancellation Reason (Optional):
+                  </label>
+                  <textarea
+                    value={bulkCancelReason}
+                    onChange={(e) => setBulkCancelReason(e.target.value)}
+                    placeholder="e.g. Batch cancelled due to kitchen closure or inventory unavailability"
+                    rows={3}
+                    style={{
+                      width: "100%",
+                      padding: "8px",
+                      borderRadius: "6px",
+                      border: "1px solid #d1d5db",
+                      fontSize: "13px",
+                    }}
+                  />
+                </div>
+              )}
+              {["Preparing", "Out for Delivery", "Delivered"].includes(bulkStatusTarget) && (
+                <p style={{ marginTop: "8px", fontSize: "12px", color: "#b45309" }}>
+                  ⚠️ Notice: Unpaid online-payment orders cannot be advanced to fulfillment states and will be automatically skipped to protect order integrity.
+                </p>
+              )}
+            </div>
+          }
+          confirmLabel={isBulkUpdating ? "Updating..." : "Confirm Update"}
+          onConfirm={throttledConfirmBulkStatusChange}
+          onCancel={() => {
+            setBulkConfirmOpen(false);
+            setBulkCancelReason("");
+          }}
+          isDestructive={bulkStatusTarget === "Cancelled"}
+        />
       )}
     </>
   );

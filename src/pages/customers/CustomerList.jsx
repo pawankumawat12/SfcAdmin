@@ -28,12 +28,20 @@ import toast from "react-hot-toast";
 import { getAdminSocket } from "../../services/socket";
 import useDebouncedValue from "../../utils/useDebouncedValue";
 import Pagination from "../../components/ui/Pagination";
+import { isValidIndianPhone, sanitizePhoneInput } from "../../utils/phoneValidation";
 import DataTable from "../../components/common/DataTable";
 import BulkActionBar from "../../components/common/BulkActionBar";
 import Button from "../../components/ui/Button";
+import { useSelector } from "react-redux";
+import { Navigate } from "react-router-dom";
 import { exportToCsv } from "../../utils/csvExport";
 
 export default function CustomerList() {
+  const user = useSelector((state) => state.auth.user);
+  if (user?.role === "store_owner") {
+    return <Navigate to="/" replace />;
+  }
+
   const [activeTab, setActiveTab] = useState("customers"); // "customers" | "requests"
   const [searchTerm, setSearchTerm] = useState("");
   const [page, setPage] = useState(1);
@@ -143,6 +151,12 @@ export default function CustomerList() {
   const handleSaveEdit = async (e) => {
     e.preventDefault();
     if (!selectedCustomer) return;
+
+    if (editForm.phone && editForm.phone.trim() && !isValidIndianPhone(editForm.phone)) {
+      toast.error("Please enter a valid 10-digit phone number starting with 6, 7, 8, or 9.");
+      return;
+    }
+
     try {
       await editCustomer({
         id: selectedCustomer.id,
@@ -494,7 +508,6 @@ export default function CustomerList() {
             borderColor: isBlocked ? "#86efac" : "#fecaca",
             color: isBlocked ? "#166534" : "#dc2626",
           }}
-          onClick={() => handleOpenBlockModal(c)}
         >
           {isBlocked ? (
             <CheckCircle size={15} />
@@ -572,6 +585,57 @@ export default function CustomerList() {
               </span>
             )}
           </button>
+        </div>
+      </div>
+
+      {/* Top Metric Cards */}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+          gap: "16px",
+          marginBottom: "20px",
+        }}
+      >
+        <div
+          className="card"
+          onClick={() => setActiveTab("customers")}
+          style={{ padding: "16px 20px", borderLeft: "4px solid #6253e8", cursor: "pointer" }}
+        >
+          <span style={{ fontSize: "12px", fontWeight: 600, color: "#6253e8" }}>Total Customers</span>
+          <div style={{ fontSize: "24px", fontWeight: 800, color: "#111827", marginTop: "4px" }}>
+            {customersData?.summary?.total ?? customerPagination?.totalItems ?? rawCustomers.length}
+          </div>
+        </div>
+
+        <div className="card" style={{ padding: "16px 20px", borderLeft: "4px solid #16a34a" }}>
+          <span style={{ fontSize: "12px", fontWeight: 600, color: "#16a34a" }}>Active Accounts</span>
+          <div style={{ fontSize: "24px", fontWeight: 800, color: "#16a34a", marginTop: "4px" }}>
+            {customersData?.summary?.active ?? rawCustomers.filter((c) => c.is_active && !c.is_blocked).length}
+          </div>
+        </div>
+
+        <div className="card" style={{ padding: "16px 20px", borderLeft: "4px solid #dc2626" }}>
+          <span style={{ fontSize: "12px", fontWeight: 600, color: "#dc2626" }}>Blocked Customers</span>
+          <div style={{ fontSize: "24px", fontWeight: 800, color: "#dc2626", marginTop: "4px" }}>
+            {customersData?.summary?.blocked ?? rawCustomers.filter((c) => c.is_blocked).length}
+          </div>
+        </div>
+
+        <div
+          className="card"
+          onClick={() => setActiveTab("requests")}
+          style={{
+            padding: "16px 20px",
+            borderLeft: "4px solid #d97706",
+            cursor: "pointer",
+            transition: "box-shadow 0.2s ease",
+          }}
+        >
+          <span style={{ fontSize: "12px", fontWeight: 600, color: "#d97706" }}>Pending Unblock Requests</span>
+          <div style={{ fontSize: "24px", fontWeight: 800, color: "#d97706", marginTop: "4px" }}>
+            {pendingRequests.length}
+          </div>
         </div>
       </div>
 
@@ -1001,9 +1065,11 @@ export default function CustomerList() {
                 </label>
                 <input
                   type="tel"
+                  maxLength={10}
+                  placeholder="e.g. 9876543210"
                   value={editForm.phone}
                   onChange={(e) =>
-                    setEditForm({ ...editForm, phone: e.target.value })
+                    setEditForm({ ...editForm, phone: sanitizePhoneInput(e.target.value) })
                   }
                   style={{
                     width: "100%",

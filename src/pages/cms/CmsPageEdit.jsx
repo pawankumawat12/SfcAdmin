@@ -28,7 +28,9 @@ export default function CmsPageEdit() {
       toast.success("CMS Page updated successfully!");
       navigate("/cms-pages");
     } catch (err) {
-      toast.error(err?.data?.message || "Failed to update CMS page");
+      if (!err?.data?.errors || Object.keys(err.data.errors).length === 0) {
+        toast.error(err?.data?.message || "Failed to update CMS page");
+      }
     }
   };
 

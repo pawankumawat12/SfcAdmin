@@ -96,6 +96,38 @@ export default function EmailLogList() {
 
   const activeLog = logDetailResponse?.data || null;
 
+  const processedBodyHtml = useMemo(() => {
+    if (!activeLog?.body_html) return "";
+    let html = activeLog.body_html;
+
+    // Ensure every <a> tag has target="_blank" and rel="noopener noreferrer"
+    html = html.replace(/<a\b([^>]*)>/gi, (match, attrs) => {
+      const cleanAttrs = attrs
+        .replace(/\btarget\s*=\s*(['"]).*?\1/gi, "")
+        .replace(/\brel\s*=\s*(['"]).*?\1/gi, "");
+      return `<a target="_blank" rel="noopener noreferrer"${cleanAttrs}>`;
+    });
+
+    const scriptTag = `
+      <base target="_blank" />
+      <script>
+        document.addEventListener('click', function(e) {
+          var anchor = e.target.closest('a');
+          if (anchor && anchor.href) {
+            e.preventDefault();
+            window.open(anchor.href, '_blank', 'noopener,noreferrer');
+          }
+        }, true);
+      </script>
+    `;
+
+    if (/<head[^>]*>/i.test(html)) {
+      return html.replace(/<head[^>]*>/i, (m) => `${m}${scriptTag}`);
+    }
+
+    return `<!DOCTYPE html><html><head>${scriptTag}<meta charset="utf-8"/><style>body{margin:0;padding:16px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;background-color:#ffffff;}</style></head><body>${html}</body></html>`;
+  }, [activeLog?.body_html]);
+
   // Keep page and limit synchronized with backend response
   useEffect(() => {
     if (logsResponse?.pagination) {
@@ -675,26 +707,7 @@ export default function EmailLogList() {
             <option value="asc">Oldest First</option>
           </select>
 
-          {/* Per Page Limit */}
-          <select
-            value={limit}
-            onChange={(e) => handleLimitChange(e.target.value)}
-            style={{
-              padding: "8px 12px",
-              borderRadius: "8px",
-              border: "1px solid #d1d5db",
-              fontSize: "13px",
-              background: "#ffffff",
-              color: "#374151",
-              cursor: "pointer",
-            }}
-            aria-label="Records per page"
-          >
-            <option value={10}>10 per page</option>
-            <option value={20}>20 per page</option>
-            <option value={50}>50 per page</option>
-            <option value={100}>100 per page</option>
-          </select>
+    
         </div>
       </div>
 
@@ -931,27 +944,8 @@ export default function EmailLogList() {
                   {activeLog?.body_html ? (
                     <iframe
                       title="Email HTML Preview"
-                      srcDoc={`
-                        <!DOCTYPE html>
-                        <html>
-                          <head>
-                            <meta charset="utf-8"/>
-                            <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-                            <style>
-                              body {
-                                margin: 0;
-                                padding: 16px;
-                                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-                                background-color: #ffffff;
-                              }
-                            </style>
-                          </head>
-                          <body>
-                            ${activeLog.body_html}
-                          </body>
-                        </html>
-                      `}
-                      sandbox="allow-same-origin"
+                      srcDoc={processedBodyHtml}
+                      sandbox="allow-same-origin allow-scripts allow-popups allow-popups-to-escape-sandbox"
                       style={{
                         width: "100%",
                         height: "440px",

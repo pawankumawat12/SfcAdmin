@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import {
   Plus,
   Pencil,
@@ -17,6 +17,7 @@ import Button from "../../components/ui/Button";
 import SearchInput from "../../components/ui/SearchInput";
 import Select from "../../components/ui/Select";
 import ConfirmDialog from "../../components/ui/ConfirmDialog";
+import Pagination from "../../components/ui/Pagination";
 import WhyChooseUsModal from "./WhyChooseUsModal";
 import WhyChooseUsHeaderModal from "./WhyChooseUsHeaderModal";
 import { ICON_MAP } from "./iconMap";
@@ -65,6 +66,26 @@ export default function WhyChooseUsList() {
     inactive: items.filter((i) => !i.is_active).length,
   };
 
+  const [page, setPage] = useState(1);
+  const limit = 10;
+
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearch, statusFilter]);
+
+  const totalPages = Math.ceil(items.length / limit) || 1;
+
+  useEffect(() => {
+    if (page > totalPages) {
+      setPage(totalPages);
+    }
+  }, [totalPages, page]);
+
+  const paginatedItems = useMemo(() => {
+    const start = (page - 1) * limit;
+    return items.slice(start, start + limit);
+  }, [items, page, limit]);
+
   const handleOpenAdd = () => {
     setEditingItem(null);
     setItemModalOpen(true);
@@ -100,7 +121,9 @@ export default function WhyChooseUsList() {
     }
   };
 
-  const handleMove = async (index, direction) => {
+  const handleMove = async (item, direction) => {
+    const index = items.findIndex((i) => i.id === item.id);
+    if (index === -1) return;
     const targetIndex = direction === "up" ? index - 1 : index + 1;
     if (targetIndex < 0 || targetIndex >= items.length) return;
 
@@ -108,8 +131,8 @@ export default function WhyChooseUsList() {
     const [moved] = reordered.splice(index, 1);
     reordered.splice(targetIndex, 0, moved);
 
-    const payload = reordered.map((item, idx) => ({
-      id: item.id,
+    const payload = reordered.map((it, idx) => ({
+      id: it.id,
       display_order: idx + 1,
     }));
 
@@ -330,8 +353,9 @@ export default function WhyChooseUsList() {
                   </td>
                 </tr>
               ) : (
-                items.map((item, index) => {
+                paginatedItems.map((item, index) => {
                   const IconComponent = ICON_MAP[item.icon] || Leaf;
+                  const actualIndex = items.findIndex((i) => i.id === item.id);
 
                   return (
                     <tr
@@ -358,14 +382,14 @@ export default function WhyChooseUsList() {
                               color: "#334155",
                             }}
                           >
-                            {item.display_order ?? index + 1}
+                            {item.display_order ?? (actualIndex >= 0 ? actualIndex + 1 : (page - 1) * limit + index + 1)}
                           </span>
 
                           <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
                             <Button
                               variant="action"
-                              disabled={index === 0 || isReordering}
-                              onClick={() => handleMove(index, "up")}
+                              disabled={actualIndex <= 0 || isReordering}
+                              onClick={() => handleMove(item, "up")}
                               title="Move Up"
                               aria-label="Move Up"
                               style={{ width: "20px", height: "14px", padding: 0, minWidth: 0 }}
@@ -374,8 +398,8 @@ export default function WhyChooseUsList() {
                             </Button>
                             <Button
                               variant="action"
-                              disabled={index === items.length - 1 || isReordering}
-                              onClick={() => handleMove(index, "down")}
+                              disabled={actualIndex === -1 || actualIndex >= items.length - 1 || isReordering}
+                              onClick={() => handleMove(item, "down")}
                               title="Move Down"
                               aria-label="Move Down"
                               style={{ width: "20px", height: "14px", padding: 0, minWidth: 0 }}
@@ -482,6 +506,17 @@ export default function WhyChooseUsList() {
             </tbody>
           </table>
         </div>
+
+        {/* Pagination */}
+        <Pagination
+          page={page}
+          totalPages={totalPages}
+          total={items.length}
+          limit={limit}
+          onPageChange={setPage}
+          itemLabel="features"
+          className="p-3 border-top"
+        />
       </div>
 
       {/* Add / Edit Feature Modal */}

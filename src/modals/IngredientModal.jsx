@@ -10,6 +10,7 @@ import {
   useGetSuppliersQuery,
 } from "../services/inventoryApi";
 import SupplierModal from "./SupplierModal";
+import { useThrottledCallback } from "../utils/throttle";
 
 const COMMON_CATEGORIES = [
   "Bakery",
@@ -103,8 +104,6 @@ export default function IngredientModal({
     setErrorMsg("");
   }, [ingredient, isOpen]);
 
-  if (!isOpen) return null;
-
   const isEdit = Boolean(ingredient?.id);
   const isLoading = isCreating || isUpdating;
 
@@ -155,7 +154,6 @@ export default function IngredientModal({
     } catch (err) {
       const msg = err?.data?.message || "Failed to save ingredient";
       setErrorMsg(msg);
-      toast.error(msg);
     }
   };
 
@@ -165,11 +163,18 @@ export default function IngredientModal({
     }
   };
 
+  const throttledSubmit = useThrottledCallback(handleSubmit, 2000);
+
+  if (!isOpen) return null;
+
   return (
     <>
       <div
         className="modal-backdrop"
         onMouseDown={(e) => {
+          if (e.target === e.currentTarget && !isLoading) onClose();
+        }}
+        onClick={(e) => {
           if (e.target === e.currentTarget && !isLoading) onClose();
         }}
       >
@@ -202,7 +207,7 @@ export default function IngredientModal({
 
           {errorMsg && <div className="confirm-error">{errorMsg}</div>}
 
-          <form className="entity-form" onSubmit={handleSubmit}>
+          <form className="entity-form" onSubmit={throttledSubmit}>
             <div className="form-grid">
               <label className="full">
                 Raw Material / Ingredient Name *
@@ -270,7 +275,6 @@ export default function IngredientModal({
                     </option>
                   ))}
                 </Select>
-                <small className="muted">Select vendor or click "+ Add Supplier" to create inline</small>
               </label>
 
               {!isEdit && (

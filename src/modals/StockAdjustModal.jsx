@@ -5,6 +5,7 @@ import Button from "../components/ui/Button";
 import Input from "../components/ui/Input";
 import Select from "../components/ui/Select";
 import { useAdjustIngredientStockMutation } from "../services/inventoryApi";
+import { useThrottledCallback } from "../utils/throttle";
 
 export default function StockAdjustModal({ isOpen, onClose, ingredient = null }) {
   const [adjustStock, { isLoading }] = useAdjustIngredientStockMutation();
@@ -25,21 +26,9 @@ export default function StockAdjustModal({ isOpen, onClose, ingredient = null })
     }
   }, [ingredient, isOpen]);
 
-  if (!isOpen || !ingredient) return null;
-
-  const currentStock = Number(ingredient.current_stock || 0);
-  const qty = Number(quantity) || 0;
-
-  let delta = 0;
-  if (adjustmentType === "PURCHASE_RESTOCK" || adjustmentType === "MANUAL_ADD") {
-    delta = qty;
-  } else {
-    delta = -qty;
-  }
-  const projectedStock = Math.max(0, Number((currentStock + delta).toFixed(4)));
-
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!ingredient) return;
     if (!quantity || Number(quantity) <= 0) {
       toast.error("Please enter a valid quantity greater than 0");
       return;
@@ -65,11 +54,29 @@ export default function StockAdjustModal({ isOpen, onClose, ingredient = null })
     }
   };
 
+  const throttledSubmit = useThrottledCallback(handleSubmit, 2000);
+
+  if (!isOpen || !ingredient) return null;
+
+  const currentStock = Number(ingredient.current_stock || 0);
+  const qty = Number(quantity) || 0;
+
+  let delta = 0;
+  if (adjustmentType === "PURCHASE_RESTOCK" || adjustmentType === "MANUAL_ADD") {
+    delta = qty;
+  } else {
+    delta = -qty;
+  }
+  const projectedStock = Math.max(0, Number((currentStock + delta).toFixed(4)));
+
   return (
     <div
       className="modal-backdrop"
       style={{ zIndex: 1050 }}
       onMouseDown={(e) => {
+        if (e.target === e.currentTarget && !isLoading) onClose();
+      }}
+      onClick={(e) => {
         if (e.target === e.currentTarget && !isLoading) onClose();
       }}
     >
@@ -108,7 +115,7 @@ export default function StockAdjustModal({ isOpen, onClose, ingredient = null })
           </strong>
         </p>
 
-        <form className="entity-form" onSubmit={handleSubmit}>
+        <form className="entity-form" onSubmit={throttledSubmit}>
           <div className="form-grid">
             <label className="full">
               Adjustment Action *

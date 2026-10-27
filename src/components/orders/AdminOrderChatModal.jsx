@@ -24,6 +24,7 @@ import {
 } from "../../services/chatApi";
 import { getAdminSocket } from "../../services/socket";
 import { toAssetUrl } from "../../utils/assetUrl";
+import { useThrottledCallback } from "../../utils/throttle";
 
 // Full categorized WhatsApp Emojis
 const EMOJI_CATEGORIES = [
@@ -314,10 +315,12 @@ export default function AdminOrderChatModal({ order, onClose }) {
     }
   };
 
+  const throttledSendMessage = useThrottledCallback(handleSendMessage, 1000);
+
   const handleKeyDown = (e) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      handleSendMessage();
+      throttledSendMessage();
     }
   };
 
@@ -731,8 +734,8 @@ export default function AdminOrderChatModal({ order, onClose }) {
                     >
                       {item.message &&
                         (!hasAttachment ||
-                          (item.message !== "📷 Photo" &&
-                            item.message !== "📄 Document")) && (
+                          (item.message !== "Photo" &&
+                            item.message !== "Document")) && (
                           <span
                             style={{
                               fontSize: "13.5px",
@@ -1222,7 +1225,7 @@ export default function AdminOrderChatModal({ order, onClose }) {
             {/* WhatsApp Send / Mic Circular Button */}
             <button
               type="button"
-              onClick={handleSendMessage}
+              onClick={throttledSendMessage}
               disabled={isSending || isExpired}
               style={{
                 width: "40px",

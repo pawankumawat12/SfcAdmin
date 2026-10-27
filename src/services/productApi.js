@@ -1,10 +1,12 @@
 import { baseApi } from "./baseApi";
 
-const createProductFormData = ({ imageFiles = [], status, ...product }) => {
+const createProductFormData = ({ imageFiles = [], status, is_pos_only, isPosOnly, ...product }) => {
   const formData = new FormData();
+  const effectiveIsPosOnly = is_pos_only ?? isPosOnly;
   Object.entries({
     ...product,
     isActive: status === "Active",
+    ...(effectiveIsPosOnly !== undefined ? { is_pos_only: effectiveIsPosOnly } : {}),
   }).forEach(([key, value]) => {
     if (value !== undefined && value !== null)
       formData.append(key, String(value));
@@ -25,6 +27,16 @@ export const productApi = baseApi.injectEndpoints({
         ...(result?.data || []).map(({ id }) => ({ type: "Product", id })),
       ],
     }),
+    getPosProducts: build.query({
+      query: (params = {}) => ({
+        url: "/products",
+        params: { limit: 300, include_pos: true, ...params },
+      }),
+      providesTags: (result) => [
+        "Product",
+        ...(result?.data || []).map(({ id }) => ({ type: "Product", id })),
+      ],
+    }),
     getProduct: build.query({
       query: (id) => `/products/${id}`,
       providesTags: (_result, _error, id) => [{ type: "Product", id }],
@@ -32,7 +44,7 @@ export const productApi = baseApi.injectEndpoints({
     getProductCategories: build.query({
       query: () => ({
         url: "/categories",
-        params: { limit: 10, isActive: true },
+        params: { limit: 50, isActive: true },
       }),
       providesTags: ["Category"],
     }),
@@ -74,6 +86,22 @@ export const productApi = baseApi.injectEndpoints({
           "isActive",
           data.status === "Active"
         );
+
+        if (data.is_pos_only !== undefined || data.isPosOnly !== undefined) {
+          formData.append("is_pos_only", String(data.is_pos_only ?? data.isPosOnly));
+        }
+
+        if (data.barcode !== undefined) {
+          formData.append("barcode", String(data.barcode ?? ""));
+        }
+
+        if (data.expiry_date !== undefined || data.expiryDate !== undefined) {
+          formData.append("expiry_date", String(data.expiry_date ?? data.expiryDate ?? ""));
+        }
+
+        if (data.cost_price !== undefined || data.costPrice !== undefined) {
+          formData.append("cost_price", String(data.cost_price ?? data.costPrice ?? "0"));
+        }
     
         // VERY IMPORTANT
         formData.append(
@@ -93,6 +121,17 @@ export const productApi = baseApi.injectEndpoints({
           method: "PUT",
           body: formData,
         }},
+      invalidatesTags: (_result, _error, { id }) => [
+        "Product",
+        { type: "Product", id },
+      ],
+    }),
+    adjustProductStock: build.mutation({
+      query: ({ id, mode = "minus", quantity = 1 }) => ({
+        url: `/products/${id}/adjust-stock`,
+        method: "PATCH",
+        body: { mode, quantity },
+      }),
       invalidatesTags: (_result, _error, { id }) => [
         "Product",
         { type: "Product", id },
@@ -123,11 +162,14 @@ export const productApi = baseApi.injectEndpoints({
 
 export const {
   useGetProductsQuery,
+  useGetPosProductsQuery,
   useGetProductQuery,
   useGetProductCategoriesQuery,
   useCreateProductMutation,
   useUpdateProductMutation,
+  useAdjustProductStockMutation,
   useDeleteProductMutation,
   useBulkUpdateProductStatusMutation,
   useBulkDeleteProductsMutation,
 } = productApi;
+

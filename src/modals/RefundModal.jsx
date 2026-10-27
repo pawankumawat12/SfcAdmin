@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { X, RotateCcw, AlertTriangle, ShieldCheck, CheckCircle2, Lock } from "lucide-react";
 import toast from "react-hot-toast";
 import { useRefundOrderMutation } from "../services/orderApi";
+import { useThrottledCallback } from "../utils/throttle";
 
 export default function RefundModal({ isOpen, onClose, order, onRefundSuccess }) {
   const [refundOrderApi, { isLoading }] = useRefundOrderMutation();
@@ -32,38 +33,38 @@ export default function RefundModal({ isOpen, onClose, order, onRefundSuccess })
     .filter((r) => r.status === "processed" || !r.status || r.status === "created")
     .reduce((sum, r) => sum + (Number(r.amount) || 0), 0);
 
-  const remainingBalance = Math.max(0, totalAmount - totalRefundedSoFar);
+  const remainingBalance = Math.max(0, Math.round(totalAmount - totalRefundedSoFar));
 
   useEffect(() => {
     if (isOpen) {
       setRefundType("full");
-      setCustomAmount(remainingBalance > 0 ? remainingBalance.toFixed(2) : "0");
+      setCustomAmount(remainingBalance > 0 ? String(Math.round(remainingBalance)) : "0");
       setReason("");
     }
   }, [isOpen, remainingBalance]);
 
-  if (!isOpen || !order) return null;
-
   const handleFullSelect = () => {
     setRefundType("full");
-    setCustomAmount(remainingBalance.toFixed(2));
+    setCustomAmount(String(Math.round(remainingBalance)));
   };
 
   const handlePartialSelect = () => {
     setRefundType("partial");
     if (Number(customAmount) >= remainingBalance) {
-      setCustomAmount((remainingBalance / 2).toFixed(2));
+      setCustomAmount(String(Math.round(remainingBalance / 2)));
     }
   };
 
   const handlePercentage = (percent) => {
     setRefundType("partial");
-    const amt = (remainingBalance * (percent / 100)).toFixed(2);
+    const amt = String(Math.round(remainingBalance * (percent / 100)));
     setCustomAmount(amt);
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+
+    if (!order) return;
 
     const amt =
       refundType === "full"
@@ -99,11 +100,18 @@ export default function RefundModal({ isOpen, onClose, order, onRefundSuccess })
       onClose();
     } catch (err) {
       console.error("Refund failed:", err);
-      toast.error(
-        err?.data?.message || err?.message || "Failed to process refund on Razorpay"
-      );
+      const errMsg =
+        err?.data?.message ||
+        err?.data?.error ||
+        err?.message ||
+        (typeof err === "string" ? err : "Failed to process refund on Razorpay");
+      toast.error(errMsg, { duration: 6000 });
     }
   };
+
+  const throttledSubmit = useThrottledCallback(handleSubmit, 2500);
+
+  if (!isOpen || !order) return null;
 
   const isAlreadyRefunded =
     (order.payment_status || "").toLowerCase() === "refunded" ||
@@ -208,7 +216,7 @@ export default function RefundModal({ isOpen, onClose, order, onRefundSuccess })
               </p>
             </div>
           ) : (
-            <form onSubmit={handleSubmit}>
+            <form onSubmit={throttledSubmit}>
               {/* Order Summary Cards */}
               <div
                 style={{
@@ -230,7 +238,7 @@ export default function RefundModal({ isOpen, onClose, order, onRefundSuccess })
                     ORDER TOTAL
                   </span>
                   <div style={{ fontSize: "18px", fontWeight: 800, color: "#111827", marginTop: "2px" }}>
-                    ₹{totalAmount.toFixed(2)}
+                    ₹{Math.round(totalAmount).toLocaleString("en-IN")}
                   </div>
                 </div>
 
@@ -246,7 +254,7 @@ export default function RefundModal({ isOpen, onClose, order, onRefundSuccess })
                     REFUNDABLE BALANCE
                   </span>
                   <div style={{ fontSize: "18px", fontWeight: 800, color: "#166534", marginTop: "2px" }}>
-                    ₹{remainingBalance.toFixed(2)}
+                    ₹{Math.round(remainingBalance).toLocaleString("en-IN")}
                   </div>
                 </div>
               </div>
@@ -268,7 +276,7 @@ export default function RefundModal({ isOpen, onClose, order, onRefundSuccess })
                 >
                   <AlertTriangle size={16} shrink={0} />
                   <span>
-                    Previously Refunded: <strong>₹{totalRefundedSoFar.toFixed(2)}</strong> (Current status: Partially Refunded)
+                    Previously Refunded: <strong>₹{Math.round(totalRefundedSoFar).toLocaleString("en-IN")}</strong> (Current status: Partially Refunded)
                   </span>
                 </div>
               )}
@@ -327,7 +335,7 @@ export default function RefundModal({ isOpen, onClose, order, onRefundSuccess })
                       Full Remaining
                     </div>
                     <div style={{ fontSize: "11px", color: "#6b7280" }}>
-                      ₹{remainingBalance.toFixed(2)} (100%)
+                      ₹{Math.round(remainingBalance)} (100%)
                     </div>
                   </button>
 
@@ -499,7 +507,7 @@ export default function RefundModal({ isOpen, onClose, order, onRefundSuccess })
                   <span>
                     {isLoading
                       ? "Processing Refund..."
-                      : `Refund ₹${refundType === "full" ? remainingBalance.toFixed(2) : parseFloat(customAmount || "0").toFixed(2)}`}
+                      : `Refund ₹${refundType === "full" ? Math.round(remainingBalance) : Math.round(parseFloat(customAmount || "0"))}`}
                   </span>
                 </button>
               </div>

@@ -6,7 +6,7 @@ import { persistReducer, persistStore } from "redux-persist";
 import storage from "../services/persistStorage";
 import { baseApi } from "../services/baseApi";
 
-const persistConfig = { key: "deepak-admin", storage, whitelist: ["catalog"] };
+const persistConfig = { key: "deepak-admin", storage, whitelist: ["catalog", "auth"] };
 const rootReducer = combineReducers({
   auth: authReducer,
   catalog: catalogReducer,

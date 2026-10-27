@@ -26,14 +26,8 @@ export default function CategoryEdit() {
       await updateCategory({ id, ...data }).unwrap();
       toast.success("Category updated successfully!");
       navigate("/categories");
-    } catch (err) {
-      if (err?.status !== 401) {
-        const errorMsg =
-          err?.data?.message ||
-          (err?.data?.errors && Object.values(err.data.errors)[0]) ||
-          "Failed to update category.";
-        toast.error(errorMsg);
-      }
+    } catch {
+      // The API error is shown inline below
     }
   };
 

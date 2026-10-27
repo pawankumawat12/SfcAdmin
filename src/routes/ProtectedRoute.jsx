@@ -1,13 +1,17 @@
 import { useEffect } from "react";
-import { Navigate, Outlet } from "react-router-dom";
+import { Navigate, Outlet, useLocation } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
 import { setUser, signOut } from "../context/authSlice";
 import { useGetMeQuery } from "../services/authApi";
-import { baseApi } from "../services/baseApi";
-import { LoaderCircle } from "lucide-react";
+import BrandSplashScreen from "../components/common/BrandSplashScreen";
+import {
+  isRouteAllowedForManager,
+  getFirstAllowedRouteForManager,
+} from "../utils/managerPermissions";
 
 export default function ProtectedRoute() {
   const dispatch = useDispatch();
+  const location = useLocation();
   const user = useSelector((state) => state.auth.user);
 
   const { data, isLoading, isFetching, isError } = useGetMeQuery(
@@ -35,27 +39,40 @@ export default function ProtectedRoute() {
   }, [isError, user, dispatch]);
 
   if ((isLoading || isFetching) && !isError && !user) {
-    return (
-      <div
-        style={{
-          minHeight: "100vh",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          background: "#f9fafb",
-          color: "#6b7280",
-          gap: "8px",
-        }}
-      >
-        <LoaderCircle size={24} className="animate-spin text-blue-600" />
-      </div>
-    );
+    return <BrandSplashScreen message="Securing your admin workspace..." />;
   }
 
-  // When signed out or unauthorized, user and reset cache will both be null
+  // Allow admin, store_owner, and manager into the portal
   const effectiveUser = user || data?.user;
-  const isAdmin = Boolean(effectiveUser && effectiveUser.role === "admin");
+  const isAuthorized = Boolean(
+    effectiveUser &&
+      (effectiveUser.role === "admin" ||
+        effectiveUser.role === "store_owner" ||
+        effectiveUser.role === "manager")
+  );
 
-  return isAdmin ? <Outlet /> : <Navigate to="/login" replace />;
+  if (!isAuthorized) {
+    return <Navigate to="/login" replace />;
+  }
+
+  // Only super admin (role === "admin") can access /managers
+  if (effectiveUser.role !== "admin" && location.pathname.startsWith("/managers")) {
+    const fallbackRoute =
+      effectiveUser.role === "manager"
+        ? getFirstAllowedRouteForManager(effectiveUser.permissions)
+        : "/";
+    return <Navigate to={fallbackRoute} replace />;
+  }
+
+  // Enforce route-level permissions for manager role
+  if (
+    effectiveUser.role === "manager" &&
+    !isRouteAllowedForManager(location.pathname, effectiveUser.permissions)
+  ) {
+    const firstAllowed = getFirstAllowedRouteForManager(effectiveUser.permissions);
+    return <Navigate to={firstAllowed} replace />;
+  }
+
+  return <Outlet />;
 }
 

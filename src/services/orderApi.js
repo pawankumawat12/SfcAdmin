@@ -61,6 +61,14 @@ export const orderApi = baseApi.injectEndpoints({
       }),
       invalidatesTags: ["Order", "Dashboard"],
     }),
+    forwardOrderToStore: build.mutation({
+      query: ({ id, store_id }) => ({
+        url: `/orders/${id}/forward-to-store`,
+        method: "POST",
+        body: { store_id },
+      }),
+      invalidatesTags: ["Order", "Dashboard"],
+    }),
     bulkUpdateOrderStatus: build.mutation({
       query: ({ ids, status, cancelReason }) => ({
         url: "/orders/bulk-status",
@@ -68,6 +76,29 @@ export const orderApi = baseApi.injectEndpoints({
         body: { ids, status, cancelReason },
       }),
       invalidatesTags: ["Order", "Product"],
+    }),
+    createPosSale: build.mutation({
+      query: (data) => ({
+        url: "/orders/pos/sale",
+        method: "POST",
+        body: data,
+      }),
+      invalidatesTags: ["Order", "Product", "Dashboard", "Ingredients", "InventoryLog"],
+    }),
+    getPosSalesHistory: build.query({
+      query: (params = {}) => ({
+        url: "/orders/pos/history",
+        params: { limit: 50, ...params },
+      }),
+      providesTags: ["Order"],
+    }),
+    updatePosSale: build.mutation({
+      query: ({ id, ...data }) => ({
+        url: `/orders/pos/sale/${id}`,
+        method: "PUT",
+        body: data,
+      }),
+      invalidatesTags: ["Order", "Product", "Dashboard", "Ingredients", "InventoryLog"],
     }),
   }),
 });
@@ -81,6 +112,10 @@ export const {
   useRefundOrderMutation,
   useAcceptOrderMutation,
   useRejectOrderMutation,
+  useForwardOrderToStoreMutation,
   useGetAdminOrderByIdQuery,
+  useCreatePosSaleMutation,
+  useGetPosSalesHistoryQuery,
+  useUpdatePosSaleMutation,
 } = orderApi;
 

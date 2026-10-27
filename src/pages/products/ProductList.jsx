@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useSelector } from "react-redux";
-import { Filter, Plus, Trash2, Pencil, X, Zap, Package, PackageX, Download, CheckCircle, Ban } from "lucide-react";
+import { Filter, Plus, Trash2, Pencil, X, Zap, Package, PackageX, Download, CheckCircle, Ban, Store, FileText, MapPin } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
 import DataTable from "../../components/common/DataTable";
@@ -19,12 +19,25 @@ import {
   useBulkUpdateProductStatusMutation,
   useBulkDeleteProductsMutation,
 } from "../../services/productApi";
+import { useGetMyStoreQuery } from "../../services/storeApi";
 
 const initialFilters = { categoryId: "", isActive: "", availabilityType: "" };
 
 export default function ProductList() {
   const navigate = useNavigate();
   const accessToken = useSelector((state) => state.auth?.accessToken);
+  const user = useSelector((state) => state.auth?.user);
+  const isStoreOwner = user?.role === "store_owner";
+
+  const { data: storeResponse } = useGetMyStoreQuery(undefined, {
+    skip: !isStoreOwner,
+  });
+
+  const isLocationMissing =
+    isStoreOwner &&
+    storeResponse?.store &&
+    (storeResponse.store.latitude == null || storeResponse.store.longitude == null);
+
   const [searchText, setSearchText] = useState("");
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [filters, setFilters] = useState(initialFilters);
@@ -44,6 +57,7 @@ export default function ProductList() {
     useBulkUpdateProductStatusMutation();
   const [bulkDeleteProducts, { isLoading: isBulkDeleting }] =
     useBulkDeleteProductsMutation();
+
   const debouncedQuery = useDebouncedValue(searchText);
   const params = useMemo(
     () => ({
@@ -55,8 +69,10 @@ export default function ProductList() {
       ...(filters.categoryId ? { categoryId: filters.categoryId } : {}),
       ...(filters.isActive !== "" ? { isActive: filters.isActive } : {}),
       ...(filters.availabilityType ? { availabilityType: filters.availabilityType } : {}),
+      // Admin sees only Admin products in master product list
+      ...(!isStoreOwner ? { admin_only: true } : {}),
     }),
-    [page, limit, debouncedQuery, filters, sortBy, sortOrder]
+    [page, limit, debouncedQuery, filters, sortBy, sortOrder, isStoreOwner]
   );
   const {
     data: productResponse,
@@ -214,13 +230,87 @@ export default function ProductList() {
     <>
       <div className="section-head">
         <div>
-          <h1>Products</h1>
-          <p>Manage the dishes and drinks visible on your storefront.</p>
+          <h1>{isStoreOwner ? "My Store Products" : "Admin Products"}</h1>
+          <p>
+            {isStoreOwner
+              ? "Manage products for your store branch."
+              : "Manage official master bakery products created by Admin."}
+          </p>
         </div>
-        <Button onClick={() => navigate("/products/create")}>
+        <Button
+          onClick={() => {
+            if (isLocationMissing) {
+              toast.error(
+                "Please set your Bakery Store Location first before adding products."
+              );
+              navigate("/store-location");
+              return;
+            }
+            navigate("/products/create");
+          }}
+        >
           <Plus size={18} /> Add product
         </Button>
       </div>
+
+      {/* Store Location Notice Banner */}
+      {isLocationMissing && (
+        <div className="alert alert-warning border-warning-subtle shadow-xs rounded-3 d-flex align-items-center justify-content-between flex-wrap gap-2 mb-4 py-2.5 px-3">
+          <div className="d-flex align-items-center gap-2">
+            <Store size={18} className="text-warning-emphasis flex-shrink-0" />
+            <span className="small text-dark fw-medium">
+              <strong>Location Setup Required:</strong> Please set your store location on the map to define your delivery area before creating products.
+            </span>
+          </div>
+          <Button
+            size="sm"
+            onClick={() => navigate("/store-location")}
+            className="d-flex align-items-center gap-1.5 py-1 px-3"
+          >
+            <MapPin size={14} />
+            <span>Set Location Now</span>
+          </Button>
+        </div>
+      )}
+
+      {/* Top Metric Cards */}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+          gap: "16px",
+          marginBottom: "20px",
+        }}
+      >
+        <div className="card" style={{ padding: "18px 20px", borderLeft: "4px solid #6253e8" }}>
+          <span style={{ fontSize: "12px", fontWeight: 600, color: "#6253e8" }}>Total Products</span>
+          <div style={{ fontSize: "24px", fontWeight: 800, color: "#111827", marginTop: "4px" }}>
+            {productResponse?.summary?.total ?? pagination?.totalItems ?? rows.length}
+          </div>
+        </div>
+
+        <div className="card" style={{ padding: "18px 20px", borderLeft: "4px solid #16a34a" }}>
+          <span style={{ fontSize: "12px", fontWeight: 600, color: "#16a34a" }}>Active Products</span>
+          <div style={{ fontSize: "24px", fontWeight: 800, color: "#16a34a", marginTop: "4px" }}>
+            {productResponse?.summary?.active ?? rows.filter((r) => r.is_active).length}
+          </div>
+        </div>
+
+        <div className="card" style={{ padding: "18px 20px", borderLeft: "4px solid #dc2626" }}>
+          <span style={{ fontSize: "12px", fontWeight: 600, color: "#dc2626" }}>Inactive / Hidden</span>
+          <div style={{ fontSize: "24px", fontWeight: 800, color: "#dc2626", marginTop: "4px" }}>
+            {productResponse?.summary?.inactive ?? rows.filter((r) => !r.is_active).length}
+          </div>
+        </div>
+
+        <div className="card" style={{ padding: "18px 20px", borderLeft: "4px solid #d97706" }}>
+          <span style={{ fontSize: "12px", fontWeight: 600, color: "#d97706" }}>Categories</span>
+          <div style={{ fontSize: "24px", fontWeight: 800, color: "#d97706", marginTop: "4px" }}>
+            {productResponse?.summary?.totalCategories ?? (categoryResponse?.data || []).length}
+          </div>
+        </div>
+      </div>
+
       <div className="card table-card">
         <div className="table-toolbar">
           <SearchInput

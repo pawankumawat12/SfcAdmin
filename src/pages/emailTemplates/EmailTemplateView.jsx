@@ -20,7 +20,12 @@ export default function EmailTemplateView() {
         <div className="template-meta"><div><span>Slug</span><strong>{template.slug}</strong></div><div><span>Status</span><strong className={template.isActive ? "active" : "inactive"}>{template.isActive ? "Active" : "Inactive"}</strong></div></div>
         <h2>{template.subject}</h2>
         {template.description && <p className="muted">{template.description}</p>}
-        <iframe title={`${template.name} preview`} sandbox="allow-same-origin" srcDoc={template.body} className="email-template-preview" />
+        <iframe
+          title={`${template.name} preview`}
+          sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox"
+          srcDoc={`<!DOCTYPE html><html><head><base target="_blank" /></head><body>${template.body}</body></html>`}
+          className="email-template-preview"
+        />
       </section>
     </>
   );

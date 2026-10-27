@@ -5,6 +5,7 @@ export default function DataTable({
   columns,
   data = [],
   renderActions,
+  stickyActions = false,
   emptyMessage = "No records found.",
   
   // Backend sorting
@@ -121,8 +122,17 @@ export default function DataTable({
                 <th
                   scope="col"
                   style={{
-                    width: "120px",
+                    width: "88px",
                     whiteSpace: "nowrap",
+                    ...(stickyActions
+                      ? {
+                          position: "sticky",
+                          right: 0,
+                          zIndex: 3,
+                          background: "#fcfcfe",
+                          boxShadow: "-8px 0 12px rgba(15, 23, 42, 0.05)",
+                        }
+                      : {}),
                   }}
                 >
                   ACTIONS
@@ -199,7 +209,21 @@ export default function DataTable({
                   })}
 
                   {renderActions && (
-                    <td style={{ verticalAlign: "middle", whiteSpace: "nowrap" }}>
+                    <td
+                      style={{
+                        verticalAlign: "middle",
+                        whiteSpace: "nowrap",
+                        ...(stickyActions
+                          ? {
+                              position: "sticky",
+                              right: 0,
+                              zIndex: 2,
+                              background: "#ffffff",
+                              boxShadow: "-8px 0 12px rgba(15, 23, 42, 0.05)",
+                            }
+                          : {}),
+                      }}
+                    >
                       <div className="d-flex align-items-center gap-2">
                         {renderActions(row)}
                       </div>

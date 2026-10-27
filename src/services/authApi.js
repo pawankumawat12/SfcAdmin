@@ -192,6 +192,59 @@ export const authApi = baseApi.injectEndpoints({
       },
       invalidatesTags: ["Auth"],
     }),
+    changePassword: build.mutation({
+      query: (body) => ({
+        url: "/auth/change-password",
+        method: "PUT",
+        body,
+      }),
+      invalidatesTags: ["Auth"],
+    }),
+    requestEmailChange: build.mutation({
+      query: (body) => ({
+        url: "/auth/request-email-change",
+        method: "POST",
+        body,
+      }),
+      async onQueryStarted(arg, { dispatch, queryFulfilled }) {
+        try {
+          const { data } = await queryFulfilled;
+          if (data?.user) {
+            dispatch(setUser(data.user));
+          }
+        } catch {}
+      },
+      invalidatesTags: ["Auth"],
+    }),
+    resendEmailChangeOtp: build.mutation({
+      query: () => ({
+        url: "/auth/resend-email-change-otp",
+        method: "POST",
+      }),
+    }),
+    verifyEmailChange: build.mutation({
+      query: (body) => ({
+        url: "/auth/verify-email-change",
+        method: "POST",
+        body,
+      }),
+      async onQueryStarted(arg, { dispatch, queryFulfilled }) {
+        try {
+          const { data } = await queryFulfilled;
+          if (data?.user) {
+            dispatch(setUser(data.user));
+          }
+        } catch {}
+      },
+      invalidatesTags: ["Auth"],
+    }),
+    cancelEmailChange: build.mutation({
+      query: () => ({
+        url: "/auth/cancel-email-change",
+        method: "POST",
+      }),
+      invalidatesTags: ["Auth"],
+    }),
   }),
 });
 
@@ -216,4 +269,9 @@ export const {
   useGetBlockedSupportRequestsQuery,
   useResolveBlockedSupportRequestMutation,
   useUpdateProfileMutation,
+  useChangePasswordMutation,
+  useRequestEmailChangeMutation,
+  useResendEmailChangeOtpMutation,
+  useVerifyEmailChangeMutation,
+  useCancelEmailChangeMutation,
 } = authApi;

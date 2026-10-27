@@ -14,7 +14,7 @@
 
 .sidebar {
   width: 254px;
-  background: #1c1c2b;
+  background: #151d30;
   color: #a5a4ba;
   height: 100vh;
   position: fixed;
@@ -355,6 +355,10 @@
   gap: 17px;
 }
 
+.topbar-whatsapp-btn {
+  padding: 7px 12px;
+}
+
 .search {
   height: 38px;
   border: 1px solid #e6e5ed;
@@ -671,7 +675,6 @@
 
 .stat-card>span {
   color: var(--muted);
-  display: block;
   font-size: 12px;
 }
 
@@ -1208,7 +1211,7 @@ td>b {
   background: #15152677 !important;
   display: grid;
   place-items: center;
-  z-index: 100;
+  z-index: 1060;
 }
 
 .confirm-dialog,
@@ -1397,6 +1400,16 @@ td>b {
   text-transform: capitalize;
 }
 
+.profile-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+}
+
+.profile-form-grid .profile-col-full {
+  grid-column: 1 / -1;
+}
+
 .modal {
   background: white;
   width: min(440px, calc(100vw - 30px));
@@ -1480,17 +1493,18 @@ td>b {
 
 .password-toggle {
   position: absolute;
-  right: 0;
-  top: 0;
+  right: 2px;
+  top: 2px;
 
-  width: 40px;
-  height: 40px;
+  width: 36px;
+  height: 36px;
 
   display: flex;
   align-items: center;
   justify-content: center;
 
   border: 0;
+  border-radius: 6px;
   background: transparent;
   color: #8b8ba0;
 
@@ -1498,7 +1512,13 @@ td>b {
 }
 
 .password-toggle:hover {
+  background: #f3f4f6;
   color: #6253e8;
+}
+
+.password-toggle:focus-visible {
+  outline: 2px solid #8479ee;
+  outline-offset: 1px;
 }
 
 
@@ -2050,7 +2070,8 @@ td>b {
 
   .topbar-title-wrap {
     min-width: 0;
-    flex: 1;
+    flex: 1 1 auto;
+    overflow: hidden;
   }
 
   .topbar h2 {
@@ -2058,7 +2079,31 @@ td>b {
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    max-width: 160px;
+    max-width: 100%;
+  }
+
+  .top-actions {
+    gap: 10px;
+  }
+
+  .table-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+
+  .table-toolbar .search {
+    width: 100% !important;
+  }
+
+  .table-toolbar .table-actions {
+    width: 100% !important;
+  }
+
+  .table-toolbar .table-actions select,
+  .table-toolbar .table-actions .ui-select {
+    width: 100% !important;
+    min-width: 100% !important;
   }
 
   .section-head {
@@ -2133,6 +2178,15 @@ td>b {
     grid-column: auto;
   }
 
+  .profile-form-grid {
+    grid-template-columns: 1fr !important;
+    gap: 16px;
+  }
+
+  .profile-form-grid .profile-col-full {
+    grid-column: auto !important;
+  }
+
   .email-template-preview {
     min-height: 280px;
   }
@@ -2149,16 +2203,44 @@ td>b {
 
   .topbar {
     height: var(--topbar-height);
-    padding: 0 10px;
+    padding: 0 8px;
   }
 
   .topbar h2 {
-    font-size: 15px;
-    max-width: 130px;
+    font-size: 14.5px;
+    max-width: 100%;
   }
 
   .top-actions {
     gap: 6px;
+  }
+
+  .topbar-shop-status {
+    padding: 3px 6px !important;
+    gap: 4px !important;
+  }
+
+  .topbar-shop-status .shop-status-label {
+    display: none !important;
+  }
+
+  .topbar-whatsapp-btn {
+    padding: 5px 8px !important;
+    gap: 4px !important;
+  }
+
+  .notif-btn {
+    width: 34px !important;
+    height: 34px !important;
+    min-width: 34px !important;
+  }
+
+  .profile {
+    padding: 2px !important;
+  }
+
+  .profile-chevron {
+    display: none !important;
   }
 
   .notification-dropdown {
@@ -2335,9 +2417,21 @@ td>b {
 }
 
 @media (max-width: 420px) {
+  .topbar {
+    padding: 0 6px !important;
+  }
+
   .topbar h2 {
-    max-width: 100px;
-    font-size: 14px;
+    max-width: 100%;
+    font-size: 13.5px;
+  }
+
+  .top-actions {
+    gap: 4px !important;
+  }
+
+  .topbar-whatsapp-btn {
+    padding: 4px 6px !important;
   }
 
   .otp-inputs {
